@@ -144,6 +144,7 @@ uint32_t str2addr_format(char *inputstr)
 	ORCASE(FI_SOCKADDR_IN6);
 	ORCASE(FI_SOCKADDR_IB);
 	ORCASE(FI_ADDR_PSMX);
+	ORCASE(FI_ADDR_GNI);
 
 	return FI_FORMAT_UNSPEC;
 }
