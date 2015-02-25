@@ -58,9 +58,9 @@
 struct fi_info hints;
 static struct fi_fabric_attr fabric_hints;
 
-static struct fi_info *fi;
-static struct fid_fabric *fabric;
-static struct fid_domain **domain_vec;
+static struct fi_info *fi = NULL;
+static struct fid_fabric *fabric = NULL;
+static struct fid_domain **domain_vec = NULL;
 
 /*
  * Tests:
@@ -146,9 +146,13 @@ err:
 				printf("Error in cleanup %d closing domain num %d: %s\n",
 				       ret, i, fi_strerror(-ret));
 			}
+			domain_vec[i] = NULL;
 		}
 	}
-	if (domain_vec != NULL) free(domain_vec);
+	if (domain_vec != NULL) {
+		free(domain_vec);
+		domain_vec = NULL;
+	}
 
 	if (fabric != NULL) {
 		fi_close(&fabric->fid);
