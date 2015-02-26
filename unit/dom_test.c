@@ -58,9 +58,9 @@
 struct fi_info hints;
 static struct fi_fabric_attr fabric_hints;
 
-static struct fi_info *fi;
-static struct fid_fabric *fabric;
-static struct fid_domain *domain;
+static struct fi_info *fi = NULL;
+static struct fid_fabric *fabric = NULL;
+static struct fid_domain **domain_vec = NULL;
 
 /*
  * Tests:
@@ -69,12 +69,16 @@ static struct fid_domain *domain;
 
 int main(int argc, char **argv)
 {
-	int op, ret;
+	int i;
+	int op, ret, num_domains = 1;
 
-	while ((op = getopt(argc, argv, "f:p:d:D:n:")) != -1) {
+	while ((op = getopt(argc, argv, "f:p:n:")) != -1) {
 		switch (op) {
 		case 'f':
 			fabric_hints.name = optarg;
+			break;
+		case 'n':
+			num_domains = atoi(optarg);
 			break;
 		case 'p':
 			fabric_hints.prov_name = optarg;
@@ -83,7 +87,8 @@ int main(int argc, char **argv)
 			printf("usage: %s\n", argv[0]);
 			printf("\t[-f fabric_name]\n");
 			printf("\t[-p provider_name]\n");
-			exit(1);
+			printf("\t[-n num domains to open]\n");
+			exit(EXIT_FAILURE);
 		}
 	}
 
@@ -93,30 +98,68 @@ int main(int argc, char **argv)
 	ret = fi_getinfo(FI_VERSION(1, 0), NULL, 0, 0, &hints, &fi);
 	if (ret != 0) {
 		printf("fi_getinfo %s\n", fi_strerror(-ret));
-		exit(1);
+		goto err;
 	}
 
 	ret = fi_fabric(fi->fabric_attr, &fabric, NULL);
 	if (ret != 0) {
 		printf("fi_fabric %s\n", fi_strerror(-ret));
-		exit(1);
-	}
-	ret = fi_domain(fabric, fi, &domain, NULL);
-	if (ret != 0) {
-		printf("fi_domain %s\n", fi_strerror(-ret));
-		exit(1);
+		goto err;
 	}
 
-	ret = fi_close(&domain->fid);
-	if (ret != 0) {
-		printf("Error %d closing domain: %s\n", ret, fi_strerror(-ret));
-		exit(1);
+	domain_vec = (struct fid_domain **)calloc(num_domains,
+					sizeof (struct fid_domain *));
+	if (domain_vec == NULL) {
+		perror("malloc");
+		goto err;
 	}
+
+	for (i=0;i<num_domains;i++) {
+		ret = fi_domain(fabric, fi, &domain_vec[i], NULL);
+		if (ret != FI_SUCCESS) {
+			printf("fi_domain num %d %s\n", i, fi_strerror(-ret));
+			goto err;
+		}
+	}
+
+	for (i=0;i<num_domains;i++) {
+		ret = fi_close(&domain_vec[i]->fid);
+		if (ret != FI_SUCCESS) {
+			printf("Error %d closing domain num %d: %s\n", ret,
+				i, fi_strerror(-ret));
+			goto err;
+		}
+	}
+
 	ret = fi_close(&fabric->fid);
-	if (ret != 0) {
+	if (ret != FI_SUCCESS) {
 		printf("Error %d closing fabric: %s\n", ret, fi_strerror(-ret));
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 
 	return ret;
+err:
+	if (domain_vec != NULL) {
+		for (i=0;i<num_domains;i++) {
+			if (domain_vec[i] != NULL) {
+				ret = fi_close(&domain_vec[i]->fid);
+				if (ret != FI_SUCCESS) {
+					printf("Error in cleanup %d closing domain num %d: %s\n",
+					       ret, i, fi_strerror(-ret));
+				}
+				domain_vec[i] = NULL;
+			}
+		}
+		free(domain_vec);
+		domain_vec = NULL;
+	}
+
+	if (fabric != NULL) {
+		fi_close(&fabric->fid);
+		if (ret != FI_SUCCESS) {
+			printf("Error in cleanup %d closing fabric: %s\n", ret,
+			       fi_strerror(-ret));
+		}
+	}
+	exit(EXIT_FAILURE);
 }
