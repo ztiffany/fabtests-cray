@@ -139,17 +139,17 @@ int main(int argc, char **argv)
 
 	return ret;
 err:
-	for (i=0;i<num_domains;i++) {
-		if (domain_vec[i] != NULL) {
-			ret = fi_close(&domain_vec[i]->fid);
-			if (ret != FI_SUCCESS) {
-				printf("Error in cleanup %d closing domain num %d: %s\n",
-				       ret, i, fi_strerror(-ret));
-			}
-			domain_vec[i] = NULL;
-		}
-	}
 	if (domain_vec != NULL) {
+		for (i=0;i<num_domains;i++) {
+			if (domain_vec[i] != NULL) {
+				ret = fi_close(&domain_vec[i]->fid);
+				if (ret != FI_SUCCESS) {
+					printf("Error in cleanup %d closing domain num %d: %s\n",
+					       ret, i, fi_strerror(-ret));
+				}
+				domain_vec[i] = NULL;
+			}
+		}
 		free(domain_vec);
 		domain_vec = NULL;
 	}
