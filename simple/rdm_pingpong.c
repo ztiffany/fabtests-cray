@@ -50,7 +50,7 @@ static struct timespec start, end;
 static void *buf;
 static size_t buffer_size;
 
-static struct fi_info hints;
+static struct fi_info *hints;
 
 static struct fid_fabric *fab;
 static struct fid_domain *dom;
@@ -78,7 +78,7 @@ static int send_xfer(int size)
 			if (ret == -FI_EAVAIL) {
 				cq_readerr(scq, "scq");
 			} else {
-				FI_PRINTERR("fi_cq_read", ret);
+				FT_PRINTERR("fi_cq_read", ret);
 			}
 			return ret;
 		}
@@ -89,7 +89,7 @@ post:
 	ret = fi_send(ep, buf, (size_t) size, fi_mr_desc(mr), remote_fi_addr,
 			&fi_ctx_send);
 	if (ret)
-		FI_PRINTERR("fi_send", ret);
+		FT_PRINTERR("fi_send", ret);
 
 	return ret;
 }
@@ -105,7 +105,7 @@ static int recv_xfer(int size)
 			if (ret == -FI_EAVAIL) {
 				cq_readerr(rcq, "rcq");
 			} else {
-				FI_PRINTERR("fi_cq_read", ret);
+				FT_PRINTERR("fi_cq_read", ret);
 			}
 			return ret;
 		}
@@ -114,7 +114,7 @@ static int recv_xfer(int size)
 	ret = fi_recv(ep, buf, buffer_size, fi_mr_desc(mr), remote_fi_addr,
 			&fi_ctx_recv);
 	if (ret)
-		FI_PRINTERR("fi_recv", ret);
+		FT_PRINTERR("fi_recv", ret);
 
 	return ret;
 }
@@ -126,7 +126,7 @@ static int send_msg(int size)
 	ret = fi_send(ep, buf, (size_t) size, fi_mr_desc(mr), remote_fi_addr,
 			&fi_ctx_send);
 	if (ret) {
-		FI_PRINTERR("fi_send", ret);
+		FT_PRINTERR("fi_send", ret);
 		return ret;
 	}
 
@@ -141,7 +141,7 @@ static int recv_msg(void)
 
 	ret = fi_recv(ep, buf, buffer_size, fi_mr_desc(mr), 0, &fi_ctx_recv);
 	if (ret) {
-		FI_PRINTERR("fi_recv", ret);
+		FT_PRINTERR("fi_recv", ret);
 		return ret;
 	}
 
@@ -228,19 +228,19 @@ static int alloc_ep_res(struct fi_info *fi)
 	cq_attr.size = max_credits << 1;
 	ret = fi_cq_open(dom, &cq_attr, &scq, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_cq_open", ret);
+		FT_PRINTERR("fi_cq_open", ret);
 		goto err1;
 	}
 
 	ret = fi_cq_open(dom, &cq_attr, &rcq, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_cq_open", ret);
+		FT_PRINTERR("fi_cq_open", ret);
 		goto err2;
 	}
 
 	ret = fi_mr_reg(dom, buf, buffer_size, 0, 0, 0, 0, &mr, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_mr_reg", ret);
+		FT_PRINTERR("fi_mr_reg", ret);
 		goto err3;
 	}
 
@@ -251,7 +251,7 @@ static int alloc_ep_res(struct fi_info *fi)
 
 	ret = fi_av_open(dom, &av_attr, &av, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_av_open", ret);
+		FT_PRINTERR("fi_av_open", ret);
 		goto err4;
 	}
 
@@ -274,25 +274,25 @@ static int bind_ep_res(void)
 
 	ret = fi_ep_bind(ep, &scq->fid, FI_SEND);
 	if (ret) {
-		FI_PRINTERR("fi_ep_bind", ret);
+		FT_PRINTERR("fi_ep_bind", ret);
 		return ret;
 	}
 
 	ret = fi_ep_bind(ep, &rcq->fid, FI_RECV);
 	if (ret) {
-		FI_PRINTERR("fi_ep_bind", ret);
+		FT_PRINTERR("fi_ep_bind", ret);
 		return ret;
 	}
 
 	ret = fi_ep_bind(ep, &av->fid, 0);
 	if (ret) {
-		FI_PRINTERR("fi_ep_bind", ret);
+		FT_PRINTERR("fi_ep_bind", ret);
 		return ret;
 	}
 
 	ret = fi_enable(ep);
 	if (ret) {
-		FI_PRINTERR("fi_enable", ret);
+		FT_PRINTERR("fi_enable", ret);
 		return ret;
 	}
 
@@ -307,7 +307,7 @@ static int init_fabric(void)
 	int ret;
 
 	if (opts.dst_addr) {
-		ret = ft_getsrcaddr(opts.src_addr, opts.src_port, &hints);
+		ret = ft_getsrcaddr(opts.src_addr, opts.src_port, hints);
 		if (ret)
 			return ret;
 		node = opts.dst_addr;
@@ -318,9 +318,9 @@ static int init_fabric(void)
 		flags = FI_SOURCE;
 	}
 
-	ret = fi_getinfo(FT_FIVERSION, node, service, flags, &hints, &fi);
+	ret = fi_getinfo(FT_FIVERSION, node, service, flags, hints, &fi);
 	if (ret) {
-		FI_PRINTERR("fi_getinfo", ret);
+		FT_PRINTERR("fi_getinfo", ret);
 		return ret;
 	}
 
@@ -338,24 +338,24 @@ static int init_fabric(void)
 
 	ret = fi_fabric(fi->fabric_attr, &fab, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_fabric", ret);
+		FT_PRINTERR("fi_fabric", ret);
 		goto err0;
 	}
 
 	ret = fi_domain(fab, fi, &dom, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_domain", ret);
+		FT_PRINTERR("fi_domain", ret);
 		goto err1;
 	}
 
 	ret = fi_endpoint(dom, fi, &ep, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_endpoint", ret);
+		FT_PRINTERR("fi_endpoint", ret);
 		goto err2;
 	}
 
 	if (opts.dst_addr == NULL) {
-		FI_DEBUG("EP opened on fabric %s\n", fi->fabric_attr->name);
+		FT_DEBUG("EP opened on fabric %s\n", fi->fabric_attr->name);
 	}
 
 	ret = alloc_ep_res(fi);
@@ -392,21 +392,21 @@ static int init_av(void)
 		addrlen = 0;
 		ret = fi_getname(&ep->fid, local_addr, &addrlen);
 		if (ret != -FI_ETOOSMALL) {
-			FI_PRINTERR("fi_getname", ret);
+			FT_PRINTERR("fi_getname", ret);
 			return ret;
 		}
 
 		local_addr = malloc(addrlen);
 		ret = fi_getname(&ep->fid, local_addr, &addrlen);
 		if (ret) {
-			FI_PRINTERR("fi_getname", ret);
+			FT_PRINTERR("fi_getname", ret);
 			return ret;
 		}
 
 		ret = fi_av_insert(av, remote_addr, 1, &remote_fi_addr, 0, 
 				&fi_ctx_av);
 		if (ret != 1) {
-			FI_PRINTERR("fi_av_insert", ret);
+			FT_PRINTERR("fi_av_insert", ret);
 			return ret;
 		}
 
@@ -435,7 +435,7 @@ static int init_av(void)
 		ret = fi_av_insert(av, remote_addr, 1, &remote_fi_addr, 0, 
 				&fi_ctx_av);
 		if (ret != 1) {
-			FI_PRINTERR("fi_av_insert", ret);
+			FT_PRINTERR("fi_av_insert", ret);
 			return ret;
 		}
 
@@ -449,7 +449,7 @@ static int init_av(void)
 	ret = fi_recv(ep, buf, buffer_size, fi_mr_desc(mr), remote_fi_addr,
 			&fi_ctx_recv);
 	if (ret)
-		FI_PRINTERR("fi_recv", ret);
+		FT_PRINTERR("fi_recv", ret);
 
 	return ret;
 }
@@ -495,13 +495,17 @@ out:
 
 int main(int argc, char **argv)
 {
-	int op;
+	int op, ret;
 	opts = INIT_OPTS;
+
+	hints = fi_allocinfo();
+	if (!hints)
+		return EXIT_FAILURE;
 
 	while ((op = getopt(argc, argv, "h" CS_OPTS INFO_OPTS)) != -1) {
 		switch (op) {
 		default:
-			ft_parseinfo(op, optarg, &hints);
+			ft_parseinfo(op, optarg, hints);
 			ft_parsecsopts(op, optarg, &opts);
 			break;
 		case '?':
@@ -514,15 +518,16 @@ int main(int argc, char **argv)
 	if (optind < argc)
 		opts.dst_addr = argv[optind];
 
-	hints.ep_type = FI_EP_RDM;
-	hints.caps = FI_MSG;
-	hints.mode = FI_CONTEXT | FI_LOCAL_MR | FI_PROV_MR_ATTR;
-	hints.addr_format = FI_FORMAT_UNSPEC;
+	hints->ep_attr->type = FI_EP_RDM;
+	hints->caps = FI_MSG;
+	hints->mode = FI_CONTEXT | FI_LOCAL_MR | FI_PROV_MR_ATTR;
 
 	if (opts.prhints) {
 		printf("%s", fi_tostr(&hints, FI_TYPE_INFO));
-		return EXIT_SUCCESS;
+		ret = EXIT_SUCCESS;
+	} else {
+		ret = run();
 	}
-
-	return run();
+	fi_freeinfo(hints);
+	return ret;
 }

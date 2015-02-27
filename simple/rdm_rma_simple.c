@@ -46,14 +46,14 @@ static void *buf;
 static size_t buffer_size;
 struct fi_rma_iov local, remote;
 
-static struct fi_info hints;
+static struct fi_info *hints;
 static char *dst_addr;
 static char *port = "9228";
 
 static struct fid_fabric *fab;
 static struct fid_domain *dom;
 static struct fid_ep *ep;
-static struct fid_cq *rcq, *scq;
+static struct fid_cntr *rcntr, *scntr;
 static struct fid_av *av;
 static struct fid_mr *mr;
 static void *remote_addr;
@@ -92,7 +92,7 @@ static int write_data(size_t size)
 	ret = fi_write(ep, buf, size, fi_mr_desc(mr), remote_fi_addr, 0, 
 			user_defined_key, &fi_ctx_write);
 	if (ret){
-		FI_PRINTERR("fi_write", ret);
+		FT_PRINTERR("fi_write", ret);
 		return ret;
 	}
 	return 0;
@@ -102,14 +102,14 @@ static void free_ep_res(void)
 {
 	fi_close(&av->fid);
 	fi_close(&mr->fid);
-	fi_close(&rcq->fid);
-	fi_close(&scq->fid);
+	fi_close(&rcntr->fid);
+	fi_close(&scntr->fid);
 	free(buf);
 }
 
 static int alloc_ep_res(struct fi_info *fi)
 {
-	struct fi_cq_attr cq_attr;
+	struct fi_cntr_attr cntr_attr;
 	struct fi_av_attr av_attr;
 	uint64_t flags = 0;
 	int ret;
@@ -122,19 +122,18 @@ static int alloc_ep_res(struct fi_info *fi)
 		return -1;
 	}
 
-	memset(&cq_attr, 0, sizeof cq_attr);
-	cq_attr.format = FI_CQ_FORMAT_CONTEXT;
-	cq_attr.wait_obj = FI_WAIT_NONE;
-	cq_attr.size = 512;
-	ret = fi_cq_open(dom, &cq_attr, &scq, NULL);
+	memset(&cntr_attr, 0, sizeof cntr_attr);
+	cntr_attr.events = FI_CNTR_EVENTS_COMP;
+
+	ret = fi_cntr_open(dom, &cntr_attr, &scntr, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_cq_open", ret);
+		FT_PRINTERR("fi_cntr_open", ret);
 		goto err1;
 	}
 
-	ret = fi_cq_open(dom, &cq_attr, &rcq, NULL);
+	ret = fi_cntr_open(dom, &cntr_attr, &rcntr, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_cq_open", ret);
+		FT_PRINTERR("fi_cntr_open", ret);
 		goto err2;
 	}
 	
@@ -144,7 +143,7 @@ static int alloc_ep_res(struct fi_info *fi)
 	ret = fi_mr_reg(dom, buf, buffer_size, FI_REMOTE_WRITE, 0, 
 			user_defined_key, flags, &mr, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_mr_reg", ret);
+		FT_PRINTERR("fi_mr_reg", ret);
 		goto err3;
 	}
 
@@ -155,7 +154,7 @@ static int alloc_ep_res(struct fi_info *fi)
 
 	ret = fi_av_open(dom, &av_attr, &av, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_av_open", ret);
+		FT_PRINTERR("fi_av_open", ret);
 		goto err4;
 	}
 
@@ -164,9 +163,9 @@ static int alloc_ep_res(struct fi_info *fi)
 err4:
 	fi_close(&mr->fid);
 err3:
-	fi_close(&rcq->fid);
+	fi_close(&rcntr->fid);
 err2:
-	fi_close(&scq->fid);
+	fi_close(&scntr->fid);
 err1:
 	free(buf);
 	return ret;
@@ -176,29 +175,29 @@ static int bind_ep_res(void)
 {
 	int ret;
 
-	ret = fi_ep_bind(ep, &scq->fid, FI_SEND);
+	ret = fi_ep_bind(ep, &scntr->fid, FI_WRITE);
 	if (ret) {
-		FI_PRINTERR("fi_ep_bind", ret);
+		FT_PRINTERR("fi_ep_bind", ret);
 		return ret;
 	}
 
 	/* Use FI_REMOTE_WRITE flag so that remote side can get completion event
 	 *  for RMA write operation */
-	ret = fi_ep_bind(ep, &rcq->fid, FI_RECV | FI_REMOTE_WRITE);
+	ret = fi_ep_bind(ep, &rcntr->fid, FI_REMOTE_WRITE);
 	if (ret) {
-		FI_PRINTERR("fi_ep_bind", ret);
+		FT_PRINTERR("fi_ep_bind", ret);
 		return ret;
 	}
 
 	ret = fi_ep_bind(ep, &av->fid, 0);
 	if (ret) {
-		FI_PRINTERR("fi_ep_bind", ret);
+		FT_PRINTERR("fi_ep_bind", ret);
 		return ret;
 	}
 
 	ret = fi_enable(ep);
 	if (ret) {
-		FI_PRINTERR("fi_enable", ret);
+		FT_PRINTERR("fi_enable", ret);
 		return ret;
 	}
 
@@ -219,9 +218,9 @@ static int init_fabric(void)
 		flags = FI_SOURCE;
 	}
 
-	ret = fi_getinfo(FT_FIVERSION, node, port, flags, &hints, &fi);
+	ret = fi_getinfo(FT_FIVERSION, node, port, flags, hints, &fi);
 	if (ret) {
-		FI_PRINTERR("fi_getinfo", ret);
+		FT_PRINTERR("fi_getinfo", ret);
 		return ret;
 	}
 
@@ -233,19 +232,19 @@ static int init_fabric(void)
 
 	ret = fi_fabric(fi->fabric_attr, &fab, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_fabric", ret);
+		FT_PRINTERR("fi_fabric", ret);
 		goto err0;
 	}
 
 	ret = fi_domain(fab, fi, &dom, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_domain", ret);
+		FT_PRINTERR("fi_domain", ret);
 		goto err1;
 	}
 
 	ret = fi_endpoint(dom, fi, &ep, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_endpoint", ret);
+		FT_PRINTERR("fi_endpoint", ret);
 		goto err2;
 	}
 
@@ -261,7 +260,7 @@ static int init_fabric(void)
 		ret = fi_av_insert(av, remote_addr, 1, &remote_fi_addr, 0, 
 				&fi_ctx_av);
 		if (ret != 1) {
-			FI_PRINTERR("fi_av_insert", ret);
+			FT_PRINTERR("fi_av_insert", ret);
 			return ret;
 		}
 	}
@@ -291,24 +290,29 @@ static int run_test(void)
 	if (ret)
 		return ret;
 
-	if(dst_addr) {	
+	if (dst_addr) {	
 		/* Execute RMA write operation from Client */
-		fprintf(stdout, "RMA write from Client\n");
+		fprintf(stdout, "RMA write to server\n");
 		sprintf(buf, "%s", welcome_text);
 		ret = write_data(sizeof(char *) * strlen(buf));
 		if (ret)
 			return ret;
 	
-		ret = wait_for_completion(scq, 1);
-		if (ret)
+		ret = fi_cntr_wait(scntr, 1, -1);
+		if (ret < 0) {
+			FT_PRINTERR("fi_cntr_wait", ret);
 			return ret;
+		}
+
 		fprintf(stdout, "Received a completion event for RMA write\n");
 	} else {	
 		/* Server waits for message from Client */
-		ret = wait_for_completion(rcq, 1);
-		if (ret)
+		ret = fi_cntr_wait(rcntr, 1, -1);
+		if (ret < 0) {
+			FT_PRINTERR("fi_cntr_wait", ret);
 			return ret;
-		
+		}
+
 		fprintf(stdout, "Received data from Client: %s\n", (char *)buf);
 	}
 
@@ -322,19 +326,16 @@ static int run_test(void)
 
 int main(int argc, char **argv)
 {
-	int op;
-	struct fi_fabric_attr *fabric_hints;
+	int op, ret;
 		
+	hints = fi_allocinfo();
+	if (!hints)
+		return EXIT_FAILURE;
+
 	while ((op = getopt(argc, argv, "f:h")) != -1) {
 		switch (op) {
 		case 'f':
-			fabric_hints = malloc(sizeof *fabric_hints);
-			if (!fabric_hints) {
-				perror("malloc");
-				exit(EXIT_FAILURE);
-			}
-			fabric_hints->prov_name = optarg;
-			hints.fabric_attr = fabric_hints;
+			hints->fabric_attr->prov_name = optarg;
 			break;
 		case '?':
 		case 'h':
@@ -346,11 +347,12 @@ int main(int argc, char **argv)
 	if (optind < argc)
 		dst_addr = argv[optind];
 
-	hints.ep_type = FI_EP_RDM;
-	hints.caps = FI_MSG | FI_RMA | FI_REMOTE_COMPLETE;
+	hints->ep_attr->type = FI_EP_RDM;
+	hints->caps = FI_MSG | FI_RMA | FI_REMOTE_COMPLETE;
 	// FI_PROV_MR_ATTR flag is not set
-	hints.mode = FI_CONTEXT;
-	hints.addr_format = FI_FORMAT_UNSPEC;
+	hints->mode = FI_CONTEXT;
 
-	return run_test();
+	ret = run_test();
+	fi_freeinfo(hints);
+	return ret;
 }

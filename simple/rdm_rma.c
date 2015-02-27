@@ -26,6 +26,8 @@
  * SOFTWARE.
  */
 
+#include <assert.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,15 +44,16 @@
 #include <shared.h>
 
 static struct cs_opts opts;
-static uint64_t op_type = FI_REMOTE_WRITE;
+static uint64_t op_type = FT_RMA_WRITE;
 static int max_credits = 128;
 static char test_name[10] = "custom";
 static struct timespec start, end;
 static void *buf;
 static size_t buffer_size;
 struct fi_rma_iov local, remote;
+static uint64_t cq_data = 1;
 
-static struct fi_info hints;
+static struct fi_info *hints;
 
 static struct fid_fabric *fab;
 static struct fid_domain *dom;
@@ -64,6 +67,7 @@ static fi_addr_t remote_fi_addr;
 struct fi_context fi_ctx_send;
 struct fi_context fi_ctx_recv;
 struct fi_context fi_ctx_write;
+struct fi_context fi_ctx_writedata;
 struct fi_context fi_ctx_read;
 struct fi_context fi_ctx_av;
 
@@ -74,11 +78,11 @@ static int send_msg(int size)
 	ret = fi_send(ep, buf, (size_t) size, fi_mr_desc(mr), remote_fi_addr,
 			&fi_ctx_send);
 	if (ret) {
-		FI_PRINTERR("fi_send", ret);
+		FT_PRINTERR("fi_send", ret);
 		return ret;
 	}
 
-	ret = wait_for_completion(scq, 1);
+	ret = wait_for_data_completion(scq, 1);
 
 	return ret;
 }
@@ -89,11 +93,11 @@ static int recv_msg(void)
 
 	ret = fi_recv(ep, buf, buffer_size, fi_mr_desc(mr), 0, &fi_ctx_recv);
 	if (ret) {
-		FI_PRINTERR("fi_recv", ret);
+		FT_PRINTERR("fi_recv", ret);
 		return ret;
 	}
 
-	ret = wait_for_completion(rcq, 1);
+	ret = wait_for_data_completion(rcq, 1);
 
 	return ret;
 }
@@ -105,10 +109,24 @@ static int read_data(size_t size)
 	ret = fi_read(ep, buf, size, fi_mr_desc(mr), remote_fi_addr, 
 		      remote.addr, remote.key, &fi_ctx_read);
 	if (ret){
-		FI_PRINTERR("fi_read", ret);
+		FT_PRINTERR("fi_read", ret);
 		return ret;
 	}
 
+	return 0;
+}
+
+static int write_data_with_cq_data(size_t size)
+{
+	int ret;
+
+	ret = fi_writedata(ep, buf, size, fi_mr_desc(mr), cq_data,
+			remote_fi_addr, remote.addr, remote.key,
+			&fi_ctx_writedata);
+	if (ret) {
+		FT_PRINTERR("fi_writedata", ret);
+		return ret;
+	}
 	return 0;
 }
 
@@ -119,10 +137,43 @@ static int write_data(size_t size)
 	ret = fi_write(ep, buf, size, fi_mr_desc(mr), remote_fi_addr, 
 		       remote.addr, remote.key, &fi_ctx_write);
 	if (ret){
-		FI_PRINTERR("fi_write", ret);
+		FT_PRINTERR("fi_write", ret);
 		return ret;
 	}
 	return 0;
+}
+
+static int wait_remote_writedata_completion(void)
+{
+	struct fi_cq_data_entry comp;
+	int ret;
+
+	do {
+		ret = fi_cq_read(rcq, &comp, 1);
+		if (ret < 0) {
+			if (ret == -FI_EAVAIL) {
+				cq_readerr(rcq, "rcq");
+			} else {
+				FT_PRINTERR("fi_cq_read", ret);
+			}
+			return ret;
+		}
+	} while (!ret);
+
+	ret = 0;
+	if (comp.data != cq_data) {
+		FT_DEBUG("Got unexpected completion data %" PRIu64 "\n", comp.data);
+	}
+	assert(comp.op_context == &fi_ctx_recv || comp.op_context == NULL);
+	if (comp.op_context == &fi_ctx_recv) {
+		/* We need to repost the receive */
+		ret = fi_recv(ep, buf, buffer_size, fi_mr_desc(mr),
+				remote_fi_addr, &fi_ctx_recv);
+		if (ret)
+			FT_PRINTERR("fi_recv", ret);
+	}
+
+	return ret;
 }
 
 static int sync_test(void)
@@ -146,14 +197,23 @@ static int run_test(void)
 
 	clock_gettime(CLOCK_MONOTONIC, &start);
 	for (i = 0; i < opts.iterations; i++) {
-		if (op_type == FI_REMOTE_WRITE) {
+		switch (op_type) {
+		case FT_RMA_WRITE:
 			ret = write_data(opts.transfer_size);
-		} else {
+			break;
+		case FT_RMA_WRITEDATA:
+			ret = write_data_with_cq_data(opts.transfer_size);
+			if (ret)
+				return ret;
+			ret = wait_remote_writedata_completion();
+			break;
+		case FT_RMA_READ:
 			ret = read_data(opts.transfer_size); 
+			break;
 		}
 		if (ret)
 			return ret;
-		ret = wait_for_completion(scq, 1);
+		ret = wait_for_data_completion(scq, 1);
 		if (ret)
 			return ret;
 	}
@@ -182,6 +242,7 @@ static int alloc_ep_res(struct fi_info *fi)
 {
 	struct fi_cq_attr cq_attr;
 	struct fi_av_attr av_attr;
+	uint64_t access_mode;
 	int ret;
 
 	buffer_size = !opts.custom ? test_size[TEST_CNT - 1].size : opts.transfer_size;
@@ -192,25 +253,37 @@ static int alloc_ep_res(struct fi_info *fi)
 	}
 
 	memset(&cq_attr, 0, sizeof cq_attr);
-	cq_attr.format = FI_CQ_FORMAT_CONTEXT;
+	cq_attr.format = FI_CQ_FORMAT_DATA;
 	cq_attr.wait_obj = FI_WAIT_NONE;
 	cq_attr.size = max_credits << 1;
 	ret = fi_cq_open(dom, &cq_attr, &scq, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_cq_open", ret);
+		FT_PRINTERR("fi_cq_open", ret);
 		goto err1;
 	}
 
 	ret = fi_cq_open(dom, &cq_attr, &rcq, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_cq_open", ret);
+		FT_PRINTERR("fi_cq_open", ret);
 		goto err2;
 	}
 	
+	switch (op_type) {
+	case FT_RMA_READ:
+		access_mode = FI_REMOTE_READ;
+		break;
+	case FT_RMA_WRITE:
+	case FT_RMA_WRITEDATA:
+		access_mode = FI_REMOTE_WRITE;
+		break;
+	default:
+		/* Impossible to reach here */
+		assert(0);
+	}
 	ret = fi_mr_reg(dom, buf, MAX(buffer_size, sizeof(uint64_t)), 
-			op_type, 0, 0, 0, &mr, NULL);
+			access_mode, 0, 0, 0, &mr, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_mr_reg", ret);
+		FT_PRINTERR("fi_mr_reg", ret);
 		goto err3;
 	}
 
@@ -221,7 +294,7 @@ static int alloc_ep_res(struct fi_info *fi)
 
 	ret = fi_av_open(dom, &av_attr, &av, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_av_open", ret);
+		FT_PRINTERR("fi_av_open", ret);
 		goto err4;
 	}
 
@@ -244,25 +317,25 @@ static int bind_ep_res(void)
 
 	ret = fi_ep_bind(ep, &scq->fid, FI_SEND);
 	if (ret) {
-		FI_PRINTERR("fi_ep_bind", ret);
+		FT_PRINTERR("fi_ep_bind", ret);
 		return ret;
 	}
 
 	ret = fi_ep_bind(ep, &rcq->fid, FI_RECV);
 	if (ret) {
-		FI_PRINTERR("fi_ep_bind", ret);
+		FT_PRINTERR("fi_ep_bind", ret);
 		return ret;
 	}
 
 	ret = fi_ep_bind(ep, &av->fid, 0);
 	if (ret) {
-		FI_PRINTERR("fi_ep_bind", ret);
+		FT_PRINTERR("fi_ep_bind", ret);
 		return ret;
 	}
 
 	ret = fi_enable(ep);
 	if (ret) {
-		FI_PRINTERR("fi_enable", ret);
+		FT_PRINTERR("fi_enable", ret);
 		return ret;
 	}
 
@@ -277,7 +350,7 @@ static int init_fabric(void)
 	int ret;
 
 	if (opts.dst_addr) {
-		ret = ft_getsrcaddr(opts.src_addr, opts.src_port, &hints);
+		ret = ft_getsrcaddr(opts.src_addr, opts.src_port, hints);
 		if (ret)
 			return ret;
 		node = opts.dst_addr;
@@ -288,9 +361,9 @@ static int init_fabric(void)
 		flags = FI_SOURCE;
 	}
 
-	ret = fi_getinfo(FT_FIVERSION, node, service, flags, &hints, &fi);
+	ret = fi_getinfo(FT_FIVERSION, node, service, flags, hints, &fi);
 	if (ret) {
-		FI_PRINTERR("fi_getinfo", ret);
+		FT_PRINTERR("fi_getinfo", ret);
 		return ret;
 	}
 
@@ -306,19 +379,19 @@ static int init_fabric(void)
 
 	ret = fi_fabric(fi->fabric_attr, &fab, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_fabric", ret);
+		FT_PRINTERR("fi_fabric", ret);
 		goto err0;
 	}
 
 	ret = fi_domain(fab, fi, &dom, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_domain", ret);
+		FT_PRINTERR("fi_domain", ret);
 		goto err1;
 	}
 
 	ret = fi_endpoint(dom, fi, &ep, NULL);
 	if (ret) {
-		FI_PRINTERR("fi_endpoint", ret);
+		FT_PRINTERR("fi_endpoint", ret);
 		goto err2;
 	}
 
@@ -356,21 +429,21 @@ static int init_av(void)
 		addrlen = 0;
 		ret = fi_getname(&ep->fid, local_addr, &addrlen);
 		if (ret != -FI_ETOOSMALL) {
-			FI_PRINTERR("fi_getname", ret);
+			FT_PRINTERR("fi_getname", ret);
 			return ret;
 		}
 
 		local_addr = malloc(addrlen);
 		ret = fi_getname(&ep->fid, local_addr, &addrlen);
 		if (ret) {
-			FI_PRINTERR("fi_getname", ret);
+			FT_PRINTERR("fi_getname", ret);
 			return ret;
 		}
 
 		ret = fi_av_insert(av, remote_addr, 1, &remote_fi_addr, 0, 
 				&fi_ctx_av);
 		if (ret != 1) {
-			FI_PRINTERR("fi_av_insert", ret);
+			FT_PRINTERR("fi_av_insert", ret);
 			return ret;
 		}
 
@@ -400,7 +473,7 @@ static int init_av(void)
 		ret = fi_av_insert(av, remote_addr, 1, &remote_fi_addr, 0, 
 				&fi_ctx_av);
 		if (ret != 1) {
-			FI_PRINTERR("fi_av_insert", ret);
+			FT_PRINTERR("fi_av_insert", ret);
 			return ret;
 		}
 
@@ -476,30 +549,36 @@ out:
 
 int main(int argc, char **argv)
 {
-	int op;
+	int op, ret;
 	opts = INIT_OPTS;
+
+	hints = fi_allocinfo();
+	if (!hints)
+		return EXIT_FAILURE;
 
 	while ((op = getopt(argc, argv, "ho:" CS_OPTS INFO_OPTS)) != -1) {
 		switch (op) {
 		case 'o':
-			if (!strcmp(optarg, "read"))
-				op_type = FI_REMOTE_READ;
-			else if (!strcmp(optarg, "write"))
-				op_type = FI_REMOTE_WRITE;
-			else {
+			if (!strcmp(optarg, "read")) {
+				op_type = FT_RMA_READ;
+			} else if (!strcmp(optarg, "writedata")) {
+				op_type = FT_RMA_WRITEDATA;
+			} else if (!strcmp(optarg, "write")) {
+				op_type = FT_RMA_WRITE;
+			} else {
 				ft_csusage(argv[0], "Ping pong client and server using rma.");
 				fprintf(stderr, "  -o <op>\trma op type: read|write (default: write)]\n");
 				return EXIT_FAILURE;
 			}	
 			break;
 		default:
-			ft_parseinfo(op, optarg, &hints);
+			ft_parseinfo(op, optarg, hints);
 			ft_parsecsopts(op, optarg, &opts);
 			break;
 		case '?':
 		case 'h':
 			ft_csusage(argv[0], "Ping pong client and server using rma.");
-			fprintf(stderr, "  -o <op>\trma op type: read|write (default: write)]\n");
+			fprintf(stderr, "  -o <op>\trma op type: read|write|writedata (default: write)]\n");
 			return EXIT_FAILURE;
 		}
 	}
@@ -507,15 +586,19 @@ int main(int argc, char **argv)
 	if (optind < argc)
 		opts.dst_addr = argv[optind];
 	
-	hints.ep_type = FI_EP_RDM;
-	hints.caps = FI_MSG | FI_RMA;
-	hints.mode = FI_CONTEXT | FI_PROV_MR_ATTR;
-	hints.addr_format = FI_FORMAT_UNSPEC;
+	hints->ep_attr->type = FI_EP_RDM;
+	hints->caps = FI_MSG | FI_RMA;
+	if (op_type == FT_RMA_WRITEDATA) {
+		hints->caps |= FI_REMOTE_CQ_DATA;
+	}
+	hints->mode = FI_CONTEXT | FI_PROV_MR_ATTR;
 	
 	if (opts.prhints) {
 		printf("%s", fi_tostr(&hints, FI_TYPE_INFO));
-		return EXIT_SUCCESS;
+		ret = EXIT_SUCCESS;
+	} else {
+		ret =run();
 	}
-
-	return run();
+	fi_freeinfo(hints);
+	return ret;
 }

@@ -36,8 +36,9 @@
 
 #include "shared.h"
 
-static struct fi_info hints;
+static struct fi_info *hints;
 static char *node, *port;
+
 
 /* options and matching help strings need to be kept in sync */
 
@@ -88,9 +89,7 @@ uint64_t str2cap(char *inputstr)
 	ORCASE(FI_ATOMICS);
 	ORCASE(FI_DYNAMIC_MR);
 	ORCASE(FI_NAMED_RX_CTX);
-	ORCASE(FI_BUFFERED_RECV);
 	ORCASE(FI_DIRECTED_RECV);
-	ORCASE(FI_INJECT);
 	ORCASE(FI_MULTI_RECV);
 	ORCASE(FI_SOURCE);
 	ORCASE(FI_SYMMETRIC);
@@ -100,7 +99,6 @@ uint64_t str2cap(char *inputstr)
 	ORCASE(FI_SEND);
 	ORCASE(FI_REMOTE_READ);
 	ORCASE(FI_REMOTE_WRITE);
-	ORCASE(FI_REMOTE_CQ_DATA);
 	ORCASE(FI_EVENT);
 	ORCASE(FI_COMPLETION);
 	ORCASE(FI_REMOTE_SIGNAL);
@@ -168,7 +166,7 @@ static int run(struct fi_info *hints, char *node, char *port)
 
 	ret = fi_getinfo(FT_FIVERSION, node, port, 0, hints, &info);
 	if (ret) {
-		FI_PRINTERR("fi_getinfo", ret);
+		FT_PRINTERR("fi_getinfo", ret);
 		return ret;
 	}
 
@@ -183,9 +181,13 @@ static int run(struct fi_info *hints, char *node, char *port)
 
 int main(int argc, char **argv)
 {
-	int op;
+	int op, use_hints = 0, ret;
 
-	hints.mode = ~0;
+	hints = fi_allocinfo();
+	if (!hints)
+		return EXIT_FAILURE;
+
+	hints->mode = ~0;
 
 	while ((op = getopt_long(argc, argv, "n:p:c:m:e:a:hv", longopts, NULL)) != -1) {
 		switch (op) {
@@ -196,16 +198,20 @@ int main(int argc, char **argv)
 			port = optarg;
 			break;
 		case 'c':
-			hints.caps = tokparse(optarg, str2cap);
+			hints->caps = tokparse(optarg, str2cap);
+			use_hints = 1;
 			break;
 		case 'm':
-			hints.mode = tokparse(optarg, str2mode);
+			hints->mode = tokparse(optarg, str2mode);
+			use_hints = 1;
 			break;
 		case 'e':
-			hints.ep_type = str2ep_type(optarg);
+			hints->ep_attr->type = str2ep_type(optarg);
+			use_hints = 1;
 			break;
 		case 'a':
-			hints.addr_format = str2addr_format(optarg);
+			hints->addr_format = str2addr_format(optarg);
+			use_hints = 1;
 			break;
 		case 'v':
 			printf("%s: %s\n", argv[0], PACKAGE_VERSION);
@@ -220,5 +226,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	return run(&hints, node, port);
+	ret = run(use_hints ? hints : NULL, node, port);
+	fi_freeinfo(hints);
+	return ret;
 }

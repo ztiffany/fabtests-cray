@@ -89,15 +89,16 @@ void ft_csusage(char *name, char *desc);
 extern struct test_size_param test_size[];
 const unsigned int test_cnt;
 #define TEST_CNT test_cnt
-#define FI_STR_LEN 32
+#define FT_STR_LEN 32
 
 int ft_getsrcaddr(char *node, char *service, struct fi_info *hints);
 int ft_getdestaddr(char *node, char *service, struct fi_info *hints);
-char *size_str(char str[FI_STR_LEN], long long size);
-char *cnt_str(char str[FI_STR_LEN], long long cnt);
+char *size_str(char str[FT_STR_LEN], long long size);
+char *cnt_str(char str[FT_STR_LEN], long long cnt);
 int size_to_count(int size);
 void init_test(int size, char *test_name, size_t test_name_len,
 		int *transfer_size, int *iterations);
+int wait_for_data_completion(struct fid_cq *cq, int num_completions);
 int wait_for_completion(struct fid_cq *cq, int num_completions);
 void cq_readerr(struct fid_cq *cq, char *cq_str);
 int64_t get_elapsed(const struct timespec *b, const struct timespec *a, 
@@ -107,15 +108,23 @@ void show_perf(char *name, int tsize, int iters, struct timespec *start,
 void show_perf_mr(int tsize, int iters, struct timespec *start, 
 		struct timespec *end, int xfers_per_iter, int argc, char *argv[]);
 
-#define FI_PRINTERR(call, retv) \
+#define FT_PRINTERR(call, retv) \
 	do { fprintf(stderr, call "(): %d, %d (%s)\n", __LINE__, (int) retv, fi_strerror((int) -retv)); } while (0)
 
-#define FI_DEBUG(fmt, ...) \
+#define FT_DEBUG(fmt, ...) \
 	do { fprintf(stderr, "%s:%d: " fmt, __FILE__, __LINE__, ##__VA_ARGS__); } while (0)
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
 #define ARRAY_SIZE(A) (sizeof(A)/sizeof(*A))
+
+/* for RMA tests --- we want to be able to select fi_writedata, but there is no
+ * constant in libfabric for this */
+enum ft_rma_opcodes {
+	FT_RMA_READ = 1,
+	FT_RMA_WRITE,
+	FT_RMA_WRITEDATA,
+};
 
 #ifdef __cplusplus
 }

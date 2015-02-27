@@ -16,7 +16,7 @@ bin_PROGRAMS = \
 	simple/fi_rdm_rma \
 	simple/fi_rdm_atomic \
 	simple/fi_ud_pingpong \
-	simple/fi_imm_data \
+	simple/fi_cq_data \
 	simple/fi_poll \
 	simple/fi_rdm_inject_pingpong \
 	simple/fi_rdm_multi_recv \
@@ -28,6 +28,7 @@ bin_PROGRAMS = \
 	unit/fi_dom_test \
 	unit/fi_ep_test \
 	ported/libibverbs/fi_rc_pingpong \
+	ported/librdmacm/fi_cmatose \
 	complex/fabtest
 
 simple_fi_info_SOURCES = \
@@ -90,8 +91,8 @@ simple_fi_ud_pingpong_SOURCES = \
 	simple/ud_pingpong.c \
 	common/shared.c
 
-simple_fi_imm_data_SOURCES = \
-	simple/imm_data.c \
+simple_fi_cq_data_SOURCES = \
+	simple/cq_data.c \
 	common/shared.c
 
 simple_fi_rdm_inject_pingpong_SOURCES = \
@@ -138,6 +139,9 @@ unit_fi_size_left_test_SOURCES = \
 ported_libibverbs_fi_rc_pingpong_SOURCES = \
 	ported/libibverbs/rc_pingpong.c
 
+ported_librdmacm_fi_cmatose_SOURCES = \
+	ported/librdmacm/cmatose.c
+
 complex_fabtest_SOURCES = \
 	complex/fabtest.c \
 	complex/ft_comm.c \
@@ -151,7 +155,11 @@ complex_fabtest_SOURCES = \
 
 man_MANS = man/fabtests.7
 
-EXTRA_DIST = include/shared.h include/unit_common.h fabtests.spec.in $(man_MANS)
+EXTRA_DIST = \
+	include/shared.h \
+	include/unit_common.h \
+	complex/fabtest.h \
+	fabtests.spec.in $(man_MANS)
 
 dist-hook: fabtests.spec
 	cp fabtests.spec $(distdir)
