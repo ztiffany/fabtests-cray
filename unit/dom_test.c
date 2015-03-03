@@ -55,7 +55,7 @@
 
 #define MAX_ADDR 256
 
-struct fi_info hints;
+struct fi_info *hints = NULL;
 static struct fi_fabric_attr fabric_hints;
 
 static struct fi_info *fi = NULL;
@@ -71,6 +71,10 @@ int main(int argc, char **argv)
 {
 	int i;
 	int op, ret, num_domains = 1;
+
+	hints = fi_allocinfo();
+	if (hints == NULL)
+		exit(EXIT_FAILURE);
 
 	while ((op = getopt(argc, argv, "f:p:n:")) != -1) {
 		switch (op) {
@@ -92,10 +96,10 @@ int main(int argc, char **argv)
 		}
 	}
 
-	hints.fabric_attr = &fabric_hints;
-	hints.mode = ~0;
+	hints->fabric_attr = &fabric_hints;
+	hints->mode = ~0;
 
-	ret = fi_getinfo(FI_VERSION(1, 0), NULL, 0, 0, &hints, &fi);
+	ret = fi_getinfo(FI_VERSION(1, 0), NULL, 0, 0, hints, &fi);
 	if (ret != 0) {
 		printf("fi_getinfo %s\n", fi_strerror(-ret));
 		goto err;
@@ -107,14 +111,13 @@ int main(int argc, char **argv)
 		goto err;
 	}
 
-	domain_vec = (struct fid_domain **)calloc(num_domains,
-					sizeof (struct fid_domain *));
+	domain_vec = calloc(num_domains,sizeof (struct fid_domain *));
 	if (domain_vec == NULL) {
 		perror("malloc");
 		goto err;
 	}
 
-	for (i=0;i<num_domains;i++) {
+	for (i = 0; i < num_domains; i++) {
 		ret = fi_domain(fabric, fi, &domain_vec[i], NULL);
 		if (ret != FI_SUCCESS) {
 			printf("fi_domain num %d %s\n", i, fi_strerror(-ret));
@@ -122,14 +125,18 @@ int main(int argc, char **argv)
 		}
 	}
 
-	for (i=0;i<num_domains;i++) {
+	for (i = 0; i < num_domains; i++) {
 		ret = fi_close(&domain_vec[i]->fid);
 		if (ret != FI_SUCCESS) {
 			printf("Error %d closing domain num %d: %s\n", ret,
 				i, fi_strerror(-ret));
 			goto err;
 		}
+		domain_vec[i] = NULL;
 	}
+
+	free(domain_vec);
+	domain_vec = NULL;
 
 	ret = fi_close(&fabric->fid);
 	if (ret != FI_SUCCESS) {
@@ -155,7 +162,7 @@ err:
 	}
 
 	if (fabric != NULL) {
-		fi_close(&fabric->fid);
+		ret = fi_close(&fabric->fid);
 		if (ret != FI_SUCCESS) {
 			printf("Error in cleanup %d closing fabric: %s\n", ret,
 			       fi_strerror(-ret));
