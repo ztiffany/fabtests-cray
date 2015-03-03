@@ -31,6 +31,8 @@ bin_PROGRAMS = \
 	ported/librdmacm/fi_cmatose \
 	complex/fabtest
 
+bin_SCRIPTS = scripts/cray_runall.sh
+
 simple_fi_info_SOURCES = \
 	simple/info.c \
 	common/shared.c
