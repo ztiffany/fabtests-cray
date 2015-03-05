@@ -1,38 +1,84 @@
-#!/bin/sh
-alps_present=`which alps`
-if [ $? == 0 ]; then
-launcher="aprun -n 1"
+#!/bin/bash
+#
+
+usage() {
+    ec=$1
+    echo "cray_runall.sh [-d <dir>]"
+    echo "   -d location of libfabric tests"
+    exit $ec
+}
+
+if [ -x /opt/slurm/default/bin/srun ]; then
+#
+# slurm uses a hh:mm:ss format, ask for 1 minute
+#
+timeout=1:00
+launcher="srun -t $timeout"
 else
-launcher="srun -n 1"
+timeout=60
+launcher="aprun -t $timeout"
 fi
+tests_failed=0
+tests_passed=0
+testdir=${PWD}
+declare -a failed_tests=()
+
+if [ $# -gt 0 ] ; then
+  while getopts "d:h" option; do
+    case $option in
+      d) testdir=$OPTARG;;
+      h) usage 0 ;;
+      *) usage 1;;
+    esac
+  done
+  shift $(($OPTIND-1))
+fi
+
+#
+# first run single process tests, fi _info is a special test
+#
+
+stests=( fi_ep_test \
+         fi_dom_test )
+
+nprocs=1
+
+
 echo Running fi_info
-$launcher ./fi_info 2>&1 | tee test.output
+$launcher -n $nprocs $testdir/fi_info 2>&1 | tee test.output
 if [ $? != 0 ] ; then
-exit -1
-fi
-count=`grep gni test.output | wc -l`
-if [ $count != 3 ] ; then
-echo "GNI doesn't appear in fi_info about, aborting..." 
-exit -1
-fi
-rm ./test.output
-sleep 1
-echo Running fi_ep_test
-$launcher ./fi_ep_test -f gni
-if [ $? != 0 ] ; then
-exit -1
+  $tests_failed++
+else
+  count=`grep gni test.output | wc -l`
+  if [ $count -lt 3 ] ; then
+    echo "GNI doesn't appear in fi_info about, aborting..." 
+    junk=$((tests_failed++))
+    failed_tests=("${failed_tests[@]}" "fi_info")
+  else
+    junk=$((tests_passed++))
+  fi
+  rm ./test.output
 fi
 sleep 1
-echo Running fi_dom_test
-$launcher ./fi_dom_test -f gni -n 4
-if [ $? != 0 ] ; then
-exit -1
+
+for test in ${stests[@]} ; do
+
+  echo Running $test
+  $launcher -n $nprocs $testdir/$test -f gni
+  if [ $? != 0 ] ; then
+    junk=$((tests_failed++))
+    failed_tests=("${failed_tests[@]}" $test)
+  else
+    junk=$((tests_passed++))
+  fi
+  sleep 1
+done
+
+echo "Tests passed:"$tests_passed
+echo "Tests failed:"$tests_failed
+if test $tests_failed -ne 0 ; then
+echo "Failing tests are:"
+for ftest in ${failed_tests[@]}; do
+  echo $ftest
+done
 fi
-sleep 1
-# fi_av_test doesn't work yet
-#echo Running fi_av_test
-#$launcher ./fi_av_test 
-#if [ $? != 0 ] ; then
-#exit -1
-#fi
-echo ...done 
