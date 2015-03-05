@@ -24,6 +24,7 @@ bin_PROGRAMS = \
 	simple/fi_rdm_shared_ctx \
 	unit/fi_eq_test \
 	unit/fi_av_test \
+	unit/fi_av_test2 \
 	unit/fi_size_left_test \
 	unit/fi_dom_test \
 	unit/fi_ep_test \
@@ -122,6 +123,10 @@ unit_fi_eq_test_SOURCES = \
 
 unit_fi_av_test_SOURCES = \
 	unit/av_test.c \
+	unit/common.c
+
+unit_fi_av_test2_SOURCES = \
+	unit/av_test2.c \
 	unit/common.c
 
 unit_fi_dom_test_SOURCES = \
