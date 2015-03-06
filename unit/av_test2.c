@@ -142,7 +142,7 @@ av_test_sync(enum fi_av_type type, int count, uint64_t flags)
 	 */
 
 	ret = fi_av_lookup(av, remote_fi_addr, test_name_addr, &test_addrlen);
-	if (ret != FI_SUCCESS) {
+	if (ret != -FI_ETOOSMALL) {
 		fprintf(stderr,"fi_av_lookup %d: %s\n", ret, fi_strerror(-ret));
 		goto err;
 	}
