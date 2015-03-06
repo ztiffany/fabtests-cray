@@ -14,9 +14,11 @@ if [ -x /opt/slurm/default/bin/srun ]; then
 #
 timeout=1:00
 launcher="srun -t $timeout"
+one_proc_per_node="--ntasks-per-node=1"
 else
 timeout=60
 launcher="aprun -t $timeout"
+one_proc_per_node="-N 1"
 fi
 tests_failed=0
 tests_passed=0
@@ -45,7 +47,7 @@ nprocs=1
 
 
 echo Running fi_info
-$launcher -n $nprocs $testdir/fi_info 2>&1 | tee test.output
+$launcher -n $nprocs $one_proc_per_node $testdir/fi_info 2>&1 | tee test.output
 if [ $? != 0 ] ; then
   $tests_failed++
 else
@@ -64,7 +66,7 @@ sleep 1
 for test in ${stests[@]} ; do
 
   echo Running $test
-  $launcher -n $nprocs $testdir/$test -f gni
+  $launcher -n $nprocs $one_proc_per_node $testdir/$test -f gni
   if [ $? != 0 ] ; then
     junk=$((tests_failed++))
     failed_tests=("${failed_tests[@]}" $test)
