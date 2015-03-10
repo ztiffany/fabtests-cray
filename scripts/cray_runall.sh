@@ -83,6 +83,7 @@ fi
 sleep 1
 
 stests=( fi_ep_test \
+         fi_av_test2 \
          fi_dom_test )
 num_stests=${#stests[@]}
 
