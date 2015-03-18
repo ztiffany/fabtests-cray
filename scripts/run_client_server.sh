@@ -66,11 +66,9 @@ fi
 
 gni_ip_addr=`/sbin/ifconfig ipogif0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}'`
 if [ $run_client -eq 1 ] ; then
-#$testprog -f $fabric $gni_ip_addr
-$testprog $gni_ip_addr
+$testprog -f $fabric $gni_ip_addr
 else
-#$testprog -f $fabric
-$testprog
+$testprog -f $fabric
 fi
 
 
