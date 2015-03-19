@@ -36,7 +36,7 @@
 # globals:
 #   provider to use for client/server "simple" tests
 cs_provider="sockets"
- 
+
 usage() {
     ec=$1
     echo "cray_runall.sh [-d <dir>]"
@@ -67,12 +67,32 @@ my_exit() {
 run_client_server_srun() {
     local prog_name=$1
     local fabric=$2
+    echo Number of args to run_client_server_srun is $#
+    if [ $# -gt 2 ]; then
+        local server_args=$3
+    fi
+    if [ $# -gt 3 ]; then
+        local client_args=$4
+    fi
     local gni_ip_addr=`/sbin/ifconfig ipogif0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}'`
     if [ -f mpmd_conf_file ] ; then
         rm mpmd_conf_file
     fi
-    echo  "0  run_client_server.sh -t $prog_name -f $fabric">> mpmd_conf_file
-    echo  "1  run_client_server.sh -t $prog_name -f $fabric -c">> mpmd_conf_file
+
+    if [ -z $server_args ]; then
+        echo  "0  run_client_server.sh -t $prog_name -f $fabric">> mpmd_conf_file
+    else
+        echo server_args=$server_args
+        echo  "0  run_client_server.sh -t $prog_name -f $fabric -a $server_args">> mpmd_conf_file
+    fi
+
+    if [ -z $client_args ]; then
+        echo  "1  run_client_server.sh -t $prog_name -f $fabric -c ">> mpmd_conf_file
+    else
+        echo client_args=$client_args
+        echo  "1  run_client_server.sh -t $prog_name -f $fabric -c -a $client_args">> mpmd_conf_file
+    fi
+
 #   cat mpmd_conf_file
 #
 # the exclusive option seems necessary for MPMD
@@ -217,5 +237,19 @@ for test in ${cs_tests[@]} ; do
   sleep 1
 
 done
+
+# handle special case of complex/fabtest
+
+total_tests=$((total_tests+1))
+echo Running test fabtest
+run_client_server_srun fabtest $cs_provider -x -x
+if [ $? != 0 ] ; then
+  junk=$((tests_failed++))
+  failed_tests=("${failed_tests[@]}" "fabtest")
+else
+  junk=$((tests_passed++))
+fi
+
+
 
 my_exit

@@ -39,7 +39,7 @@
 
 usage() {
     ec=$1
-    echo "cray_run_client_server.sh -t <test> [-f <fabric>] [-c]"
+    echo "cray_run_client_server.sh -t <test> [-f <fabric>] [-c] [-a <app args>]"
     echo "   -t name_of_client_server_test"
     echo "   -f fabric"
     echo "   -c run test as client if set"
@@ -53,11 +53,12 @@ fi
 run_client=0
 fabric="sockets"
 if [ $# -gt 0 ] ; then
-  while getopts "t:f:c" option; do
+  while getopts "t:f:ca:" option; do
     case $option in
       t) testprog=$OPTARG;;
       f) fabric=$OPTARG;;
       c) run_client=1;;
+      a) app_args=$OPTARG;;
       *) usage 1;;
     esac
   done
@@ -66,9 +67,9 @@ fi
 
 gni_ip_addr=`/sbin/ifconfig ipogif0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}'`
 if [ $run_client -eq 1 ] ; then
-$testprog -f $fabric $gni_ip_addr
+$testprog -f $fabric $app_args $gni_ip_addr
 else
-$testprog -f $fabric
+$testprog -f $fabric $app_args
 fi
 
 
