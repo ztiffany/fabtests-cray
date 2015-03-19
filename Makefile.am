@@ -32,7 +32,9 @@ bin_PROGRAMS = \
 	ported/librdmacm/fi_cmatose \
 	complex/fabtest
 
-bin_SCRIPTS = scripts/cray_runall.sh
+bin_SCRIPTS = \
+	scripts/cray_runall.sh \
+	scripts/run_client_server.sh
 
 simple_fi_info_SOURCES = \
 	simple/info.c \
