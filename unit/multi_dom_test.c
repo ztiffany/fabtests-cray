@@ -45,6 +45,7 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <inttypes.h>
+#include <assert.h>
 
 #include <rdma/fabric.h>
 #include <rdma/fi_domain.h>
@@ -60,8 +61,8 @@
 static struct fi_info *hints;
 static struct fi_info *fi;
 static struct fid_fabric *fabric;
-static struct fid_domain *domain;
-static struct fid_ep *ep;
+static struct fid_domain **domains;
+static struct fid_ep **eps;
 
 /*
  * Tests:
@@ -70,14 +71,14 @@ static struct fid_ep *ep;
 
 int main(int argc, char **argv)
 {
-	int op, ret;
+	int op, ret, ndoms = 3, neps = 3, i, j;
 
 	hints = fi_allocinfo();
 	if (!hints) {
 		exit(1);
 	}
 
-	while ((op = getopt(argc, argv, "f:p:d:D:n:")) != -1) {
+	while ((op = getopt(argc, argv, "f:p:d:D:n:d:e:h")) != -1) {
 		switch (op) {
 		case 'f':
 			hints->fabric_attr->name = strdup(optarg);
@@ -85,10 +86,19 @@ int main(int argc, char **argv)
 		case 'p':
 			hints->fabric_attr->prov_name = strdup(optarg);
 			break;
+		case 'd':
+			ndoms = atoi(optarg);
+			break;
+		case 'e':
+			neps = atoi(optarg);
+			break;
+		case 'h':
 		default:
 			printf("usage: %s\n", argv[0]);
 			printf("\t[-f fabric_name]\n");
 			printf("\t[-p provider_name]\n");
+			printf("\t[-d ndomains]\n");
+			printf("\t[-e neps]\n");
 			exit(1);
 		}
 	}
@@ -106,34 +116,55 @@ int main(int argc, char **argv)
 		printf("fi_fabric %s\n", fi_strerror(-ret));
 		exit(1);
 	}
-	ret = fi_domain(fabric, fi, &domain, NULL);
-	if (ret != 0) {
-		printf("fi_domain %s\n", fi_strerror(-ret));
-		exit(1);
+
+	domains = (struct fid_domain **)malloc(ndoms * sizeof(struct fid_domain *));
+	assert(domains);
+	eps = (struct fid_ep **)malloc(neps * ndoms * sizeof(struct fid_ep *));
+	assert(eps);
+
+	for (i = 0; i < ndoms; i++) {
+		ret = fi_domain(fabric, fi, &domains[i], NULL);
+		if (ret != 0) {
+			printf("fi_domain %s\n", fi_strerror(-ret));
+			exit(1);
+		}
+
+		for (j = 0; j < neps; j++) {
+			int idx = (i * neps) + j;
+			ret = fi_endpoint(domains[i], fi, &eps[idx], NULL);
+			if (ret != 0) {
+				printf("[%d:%d] ]fi_endpoint %s\n", i, j, fi_strerror(-ret));
+				exit(1);
+			}
+		}
 	}
 
-	ret = fi_endpoint(domain, fi, &ep, NULL);
-	if (ret != 0) {
-		printf("fi_endpoint %s\n", fi_strerror(-ret));
-		exit(1);
+	for (i = 0; i < ndoms; i++) {
+		for (j = 0; j < neps; j++) {
+			int idx = (i * neps) + j;
+			ret = fi_close(&eps[idx]->fid);
+			if (ret != 0) {
+				printf("Error %d closing ep: %s\n", ret, fi_strerror(-ret));
+				exit(1);
+			}
+		}
+
+		ret = fi_close(&domains[i]->fid);
+		if (ret != 0) {
+			printf("Error %d closing domain: %s\n", ret, fi_strerror(-ret));
+			exit(1);
+		}
 	}
 
-	ret = fi_close(&ep->fid);
-	if (ret != 0) {
-		printf("Error %d closing ep: %s\n", ret, fi_strerror(-ret));
-		exit(1);
-	}
+	free(eps);
+	free(domains);
 
-	ret = fi_close(&domain->fid);
-	if (ret != 0) {
-		printf("Error %d closing domain: %s\n", ret, fi_strerror(-ret));
-		exit(1);
-	}
 	ret = fi_close(&fabric->fid);
 	if (ret != 0) {
 		printf("Error %d closing fabric: %s\n", ret, fi_strerror(-ret));
 		exit(1);
 	}
+
 	fi_freeinfo(fi);
 	fi_freeinfo(hints);
 

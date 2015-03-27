@@ -181,7 +181,8 @@ sleep 1
 
 stests=( fi_ep_test \
          fi_av_test2 \
-         fi_dom_test )
+         fi_dom_test \
+         fi_multi_dom_test )
 num_stests=${#stests[@]}
 
 total_tests=$((total_tests+$num_stests))
