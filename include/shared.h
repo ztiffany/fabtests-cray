@@ -66,7 +66,6 @@ enum precision {
 /* client-server common options and option parsing */
 
 struct cs_opts {
-	int prhints;
 	int iterations;
 	int transfer_size;
 	char *src_port;
@@ -92,7 +91,7 @@ void ft_usage(char *name, char *desc);
 void ft_csusage(char *name, char *desc);
 #define ADDR_OPTS "b:p:s:"
 #define INFO_OPTS "n:f:"
-#define CS_OPTS ADDR_OPTS "I:S:mi"
+#define CS_OPTS ADDR_OPTS "I:S:m"
 
 #define INIT_OPTS (struct cs_opts) { .iterations = 1000, \
 				     .transfer_size = 1024, \
@@ -107,6 +106,8 @@ const unsigned int test_cnt;
 
 int ft_getsrcaddr(char *node, char *service, struct fi_info *hints);
 int ft_getdestaddr(char *node, char *service, struct fi_info *hints);
+int ft_read_addr_opts(char **node, char **service, struct fi_info *hints, 
+		uint64_t *flags, struct cs_opts *opts);
 char *size_str(char str[FT_STR_LEN], long long size);
 char *cnt_str(char str[FT_STR_LEN], long long cnt);
 int size_to_count(int size);
@@ -132,6 +133,8 @@ void show_perf_mr(int tsize, int iters, struct timespec *start,
 
 #define FT_ERR(fmt, ...) \
 	do { fprintf(stderr, "%s:%d: " fmt, __FILE__, __LINE__, ##__VA_ARGS__); } while (0)
+
+#define FT_PRINT_OPTS_USAGE(opt, desc) fprintf(stderr, " %-20s %s\n", opt, desc)
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))

@@ -104,6 +104,26 @@ int ft_getdestaddr(char *node, char *service, struct fi_info *hints)
 	return getaddr(node, service, &hints->dest_addr, &hints->dest_addrlen);
 }
 
+int ft_read_addr_opts(char **node, char **service, struct fi_info *hints, 
+		uint64_t *flags, struct cs_opts *opts)
+{
+	int ret;
+
+	if (opts->dst_addr) {
+		ret = ft_getsrcaddr(opts->src_addr, opts->src_port, hints);
+		if (ret)
+			return ret;
+		*node = opts->dst_addr;
+		*service = opts->dst_port;
+	} else {
+		*node = opts->src_addr;
+		*service = opts->src_port;
+		*flags = FI_SOURCE;
+	}
+
+	return 0;
+}
+
 char *size_str(char str[FT_STR_LEN], long long size)
 {
 	long long base, fraction = 0;
@@ -246,7 +266,7 @@ int ft_finalize(struct fid_ep *tx_ep, struct fid_cq *scq, struct fid_cq *rcq,
 	msg.context = &tx_ctx;
 	msg.data = 0;
 
-	ret = fi_sendmsg(tx_ep, &msg, FI_INJECT | FI_REMOTE_COMPLETE);
+	ret = fi_sendmsg(tx_ep, &msg, FI_INJECT | FI_TRANSMIT_COMPLETE);
 	if (ret) {
 		FT_PRINTERR("fi_sendmsg", ret);
 		return ret;
@@ -303,12 +323,12 @@ void show_perf_mr(int tsize, int iters, struct timespec *start,
 	int i;
 
 	if (header) {
-		printf("--- # ");
+		printf("---\n");
 
 		for (i = 0; i < argc; ++i)
 			printf("%s ", argv[i]);
 
-		printf("\n");
+		printf(":\n");
 		header = 0;
 	}
 
@@ -332,12 +352,12 @@ void ft_usage(char *name, char *desc)
 		fprintf(stderr, "\n%s\n", desc);
 
 	fprintf(stderr, "\nOptions:\n");
-	fprintf(stderr, "  -n <domain>\tdomain name\n");
-	fprintf(stderr, "  -b <src_port>\tnon default source port number\n");
-	fprintf(stderr, "  -p <dst_port>\tnon default destination port number\n");
-	fprintf(stderr, "  -f <provider>\tspecific provider name eg sockets, verbs\n");
-	fprintf(stderr, "  -s <address>\tsource address\n");
-	fprintf(stderr, "  -h\t\tdisplay this help output\n");
+	FT_PRINT_OPTS_USAGE("-n <domain>", "domain name");
+	FT_PRINT_OPTS_USAGE("-b <src_port>", "non default source port number");
+	FT_PRINT_OPTS_USAGE("-p <dst_port>", "non default destination port number");
+	FT_PRINT_OPTS_USAGE("-f <provider>", "specific provider name eg sockets, verbs");
+	FT_PRINT_OPTS_USAGE("-s <address>", "source address");
+	FT_PRINT_OPTS_USAGE("-h", "display this help output");
 
 	return;
 }
@@ -352,17 +372,16 @@ void ft_csusage(char *name, char *desc)
 		fprintf(stderr, "\n%s\n", desc);
 
 	fprintf(stderr, "\nOptions:\n");
-	fprintf(stderr, "  -n <domain>\tdomain name\n");
-	fprintf(stderr, "  -b <src_port>\tnon default source port number\n");
-	fprintf(stderr, "  -p <dst_port>\tnon default destination port number\n");
-	fprintf(stderr, "  -f <provider>\tspecific provider name eg sockets, verbs\n");
-	fprintf(stderr, "  -s <address>\tsource address\n");
-	fprintf(stderr, "  -I <number>\tnumber of iterations\n");
-	fprintf(stderr, "  -S <size>\tspecific transfer size or 'all'\n");
-	fprintf(stderr, "  -m\t\tmachine readable output\n");
-	fprintf(stderr, "  -i\t\tprint hints structure and exit\n");
-	fprintf(stderr, "  -v\t\tdisplay versions and exit\n");
-	fprintf(stderr, "  -h\t\tdisplay this help output\n");
+	FT_PRINT_OPTS_USAGE("-n <domain>", "domain name");
+	FT_PRINT_OPTS_USAGE("-b <src_port>", "non default source port number");
+	FT_PRINT_OPTS_USAGE("-p <dst_port>", "non default destination port number");
+	FT_PRINT_OPTS_USAGE("-f <provider>", "specific provider name eg sockets, verbs");
+	FT_PRINT_OPTS_USAGE("-s <address>", "source address");
+	FT_PRINT_OPTS_USAGE("-I <number>", "number of iterations");
+	FT_PRINT_OPTS_USAGE("-S <size>", "specific transfer size or 'all'");
+	FT_PRINT_OPTS_USAGE("-m", "machine readable output");
+	FT_PRINT_OPTS_USAGE("-v", "display versions and exit");
+	FT_PRINT_OPTS_USAGE("-h", "display this help output");
 
 	return;
 }
@@ -434,9 +453,6 @@ void ft_parsecsopts(int op, char *optarg, struct cs_opts *opts)
 		break;
 	case 'm':
 		opts->machr = 1;
-		break;
-	case 'i':
-		opts->prhints = 1;
 		break;
 	default:
 		/* let getopt handle unknown opts*/
