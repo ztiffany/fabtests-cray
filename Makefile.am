@@ -29,6 +29,7 @@ bin_PROGRAMS = \
 	unit/fi_size_left_test \
 	unit/fi_dom_test \
 	unit/fi_ep_test \
+	unit/fi_multi_dom_test \
 	ported/libibverbs/fi_rc_pingpong \
 	ported/librdmacm/fi_cmatose \
 	complex/fabtest
@@ -162,6 +163,10 @@ unit_fi_dom_test_LDADD = libfabtests.la
 
 unit_fi_ep_test_SOURCES = \
 	unit/ep_test.c \
+	unit/common.c
+
+unit_fi_multi_dom_test_SOURCES = \
+	unit/multi_dom_test.c \
 	unit/common.c
 
 unit_fi_size_left_test_SOURCES = \
