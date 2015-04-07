@@ -188,3 +188,34 @@ EXTRA_DIST = \
 
 dist-hook: fabtests.spec
 	cp fabtests.spec $(distdir)
+
+if HAVE_PMI
+AM_CFLAGS += -lpmi
+
+if HAVE_CRAY_PMI
+AM_CFLAGS += -DCRAY_PMI_COLL
+endif
+
+bin_PROGRAMS += \
+	ported/omb/rdm_bw \
+	ported/omb/rdm_latency \
+	ported/omb/rdm_mbw_mr
+
+ported_omb_rdm_bw_SOURCES = \
+	ported/omb/rdm_bw.c \
+	ported/omb/ft_utils.c
+ported_omb_rdm_bw_LDADD = libfabtests.la
+
+ported_omb_rdm_latency_SOURCES = \
+	ported/omb/rdm_latency.c \
+	ported/omb/ft_utils.c
+ported_omb_rdm_latency_LDADD = libfabtests.la
+
+ported_omb_rdm_mbw_mr_SOURCES = \
+	ported/omb/rdm_mbw_mr.c \
+	ported/omb/ft_utils.c
+ported_omb_rdm_mbw_mr_LDADD = libfabtests.la
+
+EXTRA_DIST += \
+	ft_utils.h
+endif
