@@ -6,8 +6,8 @@ noinst_LTLIBRARIES = libfabtests.la
 libfabtests_la_SOURCES = shared.c
 
 if MACOS
-libfabtests_la_SOURCES += include/osx/osd.h
-libfabtests_la_SOURCES += common/osx/osd.c
+libfabtests_la_SOURCES += osx/osd.h
+libfabtests_la_SOURCES += osx/osd.c
 endif
 
 EXTRA_DIST = \
