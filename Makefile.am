@@ -38,7 +38,7 @@ if HAVE_EPOLL
 bin_PROGRAMS += simple/fi_msg_epoll
 endif
 
-bin_SCRIPTS=scripts/runfabtests.sh
+dist_bin_SCRIPTS=scripts/runfabtests.sh
 
 bin_SCRIPTS += \
 	scripts/cray_runall.sh \
