@@ -40,7 +40,7 @@ endif
 
 dist_bin_SCRIPTS=scripts/runfabtests.sh
 
-bin_SCRIPTS += \
+dist_bin_SCRIPTS += \
 	scripts/cray_runall.sh \
 	scripts/run_client_server.sh
 
