@@ -290,6 +290,49 @@ int ft_recv_dgram(void)
 	return -FI_ETIMEDOUT;
 }
 
+int ft_recv_dgram_flood(void)
+{
+	struct timespec s, e;
+	int credits, ret;
+	int64_t poll_time = 0;
+	int expected = ft.xfer_iter;
+	int got = 0;
+
+	do {
+		if (ft_rx.credits > (ft_rx.max_credits >> 1)) {
+			ret = ft_post_recv_bufs();
+			if (ret)
+				return ret;
+		}
+
+		credits = ft_rx.credits;
+
+		ret = ft_comp_rx();
+		if (ret)
+			return ret;
+
+		if (credits != ft_rx.credits) {
+			poll_time = 0;
+			got += ft_rx.credits - credits;
+		}
+
+		if (got >= expected)
+			return 0;
+
+		if (!poll_time)
+			clock_gettime(CLOCK_MONOTONIC, &s);
+
+		clock_gettime(CLOCK_MONOTONIC, &e);
+		poll_time = get_elapsed(&s, &e, MILLI);
+
+	} while (poll_time < 1);
+
+	if (expected != got)
+		fprintf(stderr, "Warn: lost %d dgrams\n", expected - got);
+
+	return -FI_ETIMEDOUT;
+}
+
 int ft_sendrecv_dgram(void)
 {
 	int ret, try;

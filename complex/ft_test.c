@@ -269,6 +269,97 @@ static int ft_run_latency(void)
 	return 0;
 }
 
+static int ft_bw(void)
+{
+	int ret, i;
+
+	if (listen_sock < 0) {
+		for (i = 0; i < ft.xfer_iter; i++) {
+			ret = ft_send_msg();
+			if (ret)
+				return ret;
+		}
+
+		ret = ft_recv_msg();
+		if (ret)
+			return ret;
+	} else {
+		for (i = 0; i < ft.xfer_iter; i += ft_rx.credits) {
+			ret = ft_post_recv_bufs();
+			if (ret)
+				return ret;
+
+			ret = ft_comp_rx();
+			if (ret)
+				return ret;
+                }
+
+		ret = ft_send_msg();
+		if (ret)
+			return ret;
+	}
+
+	while (ft_tx.credits < ft_tx.max_credits) {
+		ret = ft_comp_tx();
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
+static int ft_bw_dgram(void)
+{
+	int ret, i;
+
+	if (listen_sock < 0) {
+		for (i = 0; i < ft.xfer_iter; i++) {
+			ret = ft_send_dgram();
+			if (ret)
+				return ret;
+		}
+
+		ret = ft_sendrecv_dgram();
+	} else {
+		ret = ft_recv_dgram_flood();
+		if (ret)
+			return ret;
+
+		ret = ft_send_dgram();
+	}
+
+	return ret;
+}
+
+static int ft_run_bandwidth(void)
+{
+	int ret, i;
+
+	for (i = 0; i < ft.size_cnt; i += ft.inc_step) {
+		ft_tx.msg_size = ft.size_array[i];
+		if (ft_tx.msg_size > fabric_info->ep_attr->max_msg_size)
+			break;
+
+		ft.xfer_iter = test_info.test_flags & FT_FLAG_QUICKTEST ?
+				5 : size_to_count(ft_tx.msg_size);
+
+		ret = ft_sync_test(0);
+		if (ret)
+			return ret;
+
+		clock_gettime(CLOCK_MONOTONIC, &start);
+		ret = (test_info.ep_type == FI_EP_DGRAM) ?
+			ft_bw_dgram() : ft_bw();
+		clock_gettime(CLOCK_MONOTONIC, &end);
+		if (ret)
+			return ret;
+
+		show_perf("bw", ft_tx.msg_size, ft.xfer_iter, &start, &end, 1);
+	}
+
+	return 0;
+}
+
 static void ft_cleanup(void)
 {
 	FT_CLOSE_FID(ep);
@@ -310,6 +401,9 @@ int ft_run_test()
 	switch (test_info.test_type) {
 	case FT_TEST_LATENCY:
 		ret = ft_run_latency();
+		break;
+	case FT_TEST_BANDWIDTH:
+		ret = ft_run_bandwidth();
 		break;
 	default:
 		ret = -FI_ENOSYS;
