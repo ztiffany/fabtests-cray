@@ -1,0 +1,5 @@
+# expected failures, one per line
+# These 2 tests work in loop-back mode, but not on distinct nodes
+fi_rdm_shared_ctx
+fabtest
+
