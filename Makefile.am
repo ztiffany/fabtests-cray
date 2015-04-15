@@ -42,7 +42,9 @@ dist_bin_SCRIPTS=scripts/runfabtests.sh
 
 dist_bin_SCRIPTS += \
 	scripts/cray_runall.sh \
-	scripts/run_client_server.sh
+	scripts/run_client_server.py \
+	scripts/cray_runall_expected_failures \
+	scripts/cray_runall_intermittent_failures
 
 noinst_LTLIBRARIES = libfabtests.la
 libfabtests_la_SOURCES = common/shared.c

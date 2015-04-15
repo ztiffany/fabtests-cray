@@ -36,6 +36,10 @@
 # globals:
 #   provider to use for client/server "simple" tests
 cs_provider="sockets"
+script_path=$(dirname "$0")
+run_client_server=$script_path/run_client_server.py
+expected_failures=$script_path/cray_runall_expected_failures
+intermittent_failures=$script_path/cray_runall_intermittent_failures
 
 usage() {
     ec=$1
@@ -45,92 +49,51 @@ usage() {
 }
 
 my_exit() {
+    # check for expected or intermittent failures
+    expected=`awk '{ if ($1!="#") print $0 }' < $expected_failures`
+    intermittent=`awk '{ if ($1!="#") print $0 }' < $intermittent_failures`
+    # replace control characters with spaces
+    expected=${expected//[[:cntrl:]]/ }
+    intermittent=${intermittent//[[:cntrl:]]/ }
     echo "==="
-    echo "Total tests run:"$total_tests
-    echo "Tests passed:"$tests_passed
-    echo "Tests failed:"$tests_failed
+    echo "Total tests run: "$total_tests
+    echo "Tests passed: "$tests_passed
+    echo "Tests failed: "$tests_failed
     if test $tests_failed -ne 0 ; then
 	echo "Failing tests are:"
 	for ftest in ${failed_tests[@]}; do
-	    echo $ftest
+	    expr="$ftest[[:blank:]]"
+	    lexpr="$ftest$"
+	    if [[ "$expected" =~ $expr ]]; then
+		echo "* $ftest (EXPECTED)"
+		junk=$((tests_failed--))
+		expected=${expected//$expr/}
+	    elif [[ "$expected" =~ $lexpr ]]; then
+		echo "* $ftest (EXPECTED)"
+		junk=$((tests_failed--))
+		expected=${expected%%$ftest}
+	    elif [[ "$intermittent" =~ $expr ]] || [[ "$intermittent" =~ $lexpr ]]; then
+		echo "* $ftest (INTERMITTENT)"
+		junk=$((tests_failed--))
+	    else
+		echo "* $ftest"
+	    fi
 	done
     fi
+
+    unexpected=${expected//[[:blank:]]/}
+    if [[ "$unexpected" != "" ]]; then
+	echo "The following tests were expected to fail, but passed:"
+	for t in $expected; do
+	    echo "* $t"
+	    junk=$((tests_failed++))
+	done
+    fi
+
     exit $tests_failed
 }
 
-#
-# srun specific function to run the client/server tests
-# in simpledirectory.  This function assumes the client and
-# server are run on the same node.
-#
 
-run_client_server_srun() {
-    local prog_name=$1
-    local fabric=$2
-    echo Number of args to run_client_server_srun is $#
-    if [ $# -gt 2 ]; then
-        local server_args=$3
-    fi
-    if [ $# -gt 3 ]; then
-        local client_args=$4
-    fi
-    local gni_ip_addr=`/sbin/ifconfig ipogif0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}'`
-    if [ -f mpmd_conf_file ] ; then
-        rm mpmd_conf_file
-    fi
-
-    if [ -z $server_args ]; then
-        echo  "0  run_client_server.sh -t $prog_name -f $fabric">> mpmd_conf_file
-    else
-        echo server_args=$server_args
-        echo  "0  run_client_server.sh -t $prog_name -f $fabric -a $server_args">> mpmd_conf_file
-    fi
-
-    if [ -z $client_args ]; then
-        echo  "1  run_client_server.sh -t $prog_name -f $fabric -c ">> mpmd_conf_file
-    else
-        echo client_args=$client_args
-        echo  "1  run_client_server.sh -t $prog_name -f $fabric -c -a $client_args">> mpmd_conf_file
-    fi
-
-#   cat mpmd_conf_file
-#
-# the exclusive option seems necessary for MPMD
-#
-    $launcher --multi-prog --exclusive -N 1 -t $timeout mpmd_conf_file
-    return $?
-}
-
-#
-# the aprun method assume one is running the script
-# in a batch environment, so the first invocation of
-# aprun will put a rank on the same node as for the
-# second invocation.
-#
-
-run_client_server_aprun() {
-    local prog_name=$1
-    local gni_ip_addr=`aprun -n 1 /sbin/ifconfig ipogif0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}'`
-    echo  "0: $prog_name" >> mpmd_conf_file
-    echo  "1: $prog_name $gni_ip_addr" >> mpmd_conf_file
-    $launcher -n 1 $prog_name : -n 1 $ prog_name $gni_ip_addr
-    return $?
-}
-
-if [ -x /opt/slurm/default/bin/srun ]; then
-#
-# slurm uses a hh:mm:ss format, ask for 1 minute
-#
-using_alps=0
-timeout=1:00
-launcher="srun -t $timeout"
-one_proc_per_node="--ntasks-per-node=1"
-else
-using_alps=1
-timeout=60
-launcher="aprun -t $timeout"
-one_proc_per_node="-N 1"
-fi
 tests_failed=0
 tests_passed=0
 testdir=${PWD}
@@ -154,9 +117,25 @@ fi
 nprocs=1
 total_tests=1
 
+#
+# Check for srun or aprun
+#
+srun=`command -v srun`
+if [ $? == 0 ]; then
+    launcher="srun"
+else
+    aprun=`command -v aprun`
+    if [ $? == 0 ]; then
+        launcher="aprun"
+    else
+        echo "Cannot find a supported job launcher (srun, aprun).  Please load the appropriate module"
+        exit -1
+    fi
+fi
+
 tmp_outfile="test.$$.out"
 echo Running fi_info
-$launcher -n $nprocs $one_proc_per_node $testdir/fi_info 2>&1 > $tmp_outfile
+$run_client_server $testdir/fi_info -f gni --launcher $launcher --no-server 2>&1 > $tmp_outfile
 if [ $? != 0 ]; then
     echo "fi_info failed, aborting..."
     junk=$((tests_failed++))
@@ -190,7 +169,7 @@ total_tests=$((total_tests+$num_stests))
 for test in ${stests[@]} ; do
 
   echo Running $test
-  $launcher -n $nprocs $one_proc_per_node $testdir/$test -f gni
+  $run_client_server $testdir/$test -f gni --launcher $launcher --no-server
   if [ $? != 0 ] ; then
     junk=$((tests_failed++))
     failed_tests=("${failed_tests[@]}" $test)
@@ -200,6 +179,7 @@ for test in ${stests[@]} ; do
   sleep 1
 done
 
+# Is there a way to have configure get all thes names for us?
 cs_tests=(fi_msg\
           fi_msg_pingpong \
           fi_msg_rma \
@@ -228,7 +208,7 @@ total_tests=$((total_tests+$num_cs_tests))
 for test in ${cs_tests[@]} ; do
 
   echo Running $test using provider $cs_provider
-  run_client_server_srun $test $cs_provider
+  $run_client_server $testdir/$test -f $cs_provider --launcher $launcher
   if [ $? != 0 ] ; then
     junk=$((tests_failed++))
     failed_tests=("${failed_tests[@]}" $test)
@@ -243,7 +223,7 @@ done
 
 total_tests=$((total_tests+1))
 echo Running test fabtest
-run_client_server_srun fabtest $cs_provider -x -x
+$run_client_server $testdir/fabtest -f $cs_provider --launcher $launcher --server-args="-x" --client-args="-x" -t 120
 if [ $? != 0 ] ; then
   junk=$((tests_failed++))
   failed_tests=("${failed_tests[@]}" "fabtest")
