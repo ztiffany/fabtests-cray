@@ -63,6 +63,14 @@ AC_ARG_WITH([libfabric],
              LDFLAGS="-L$withval/$fab_libdir $LDFLAGS"],
             [])
 
+AC_ARG_WITH([pmi],
+            AC_HELP_STRING([--with-pmi], [Specify PMI location - default NO]),
+            [AS_IF([test -d $withval/lib64], [pmi_libdir="lib64"], [pmi_libdir="lib"])
+             CPPFLAGS="-I $withval/include $CPPFLAGS"
+             LDFLAGS="-L$withval/$pmi_libdir $LDFLAGS"
+             AM_CONDITIONAL([HAVE_PMI], [true])],
+            [AM_CONDITIONAL([HAVE_PMI], [false])])
+
 dnl Checks for libraries
 AC_CHECK_LIB([fabric], fi_getinfo, [],
     AC_MSG_ERROR([fi_getinfo() not found.  fabtests requires libfabric.]))
