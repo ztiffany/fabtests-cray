@@ -208,6 +208,10 @@ dist-hook: fabtests.spec
 if HAVE_PMI
 AM_CFLAGS += -lpmi
 
+if HAVE_CRAY_PMI
+AM_CFLAGS += -DCRAY_PMI_COLL
+endif
+
 bin_PROGRAMS += \
 	perf/rdm_bw \
 	perf/rdm_latency

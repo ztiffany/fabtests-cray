@@ -41,7 +41,6 @@ void FT_Init(int *,char ***);
 void FT_Abort(void);
 void FT_Exit(void);
 void FT_Rank(int *);
-void FT_Npes(int *);
 void FT_Finalize(void);
 void FT_Barrier(void);
 void FT_Job_size(int *);

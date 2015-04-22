@@ -48,12 +48,166 @@
 #include "pmi.h"
 #include "ft_utils.h"
 
-extern int PMI_Init(int *) __attribute ((weak));
-extern int PMI_Finalize(void) __attribute ((weak));
-extern int PMI_Barrier(void) __attribute ((weak));
-extern int PMI_Get_size(int *) __attribute ((weak));
-extern int PMI_Get_rank(int *) __attribute ((weak));
-extern int PMI_Abort(int, const char *) __attribute ((weak));
+#ifndef CRAY_PMI_COLL
+
+static int myRank;
+static char *kvsName;
+static int debug = 0;
+
+#define ENCODE_LEN(_len)	(2 * _len + 1)
+
+static char *encode(char *buf, size_t len)
+{
+	int i;
+	char *ebuf;
+
+	ebuf = calloc(ENCODE_LEN(len), 1);
+	assert(ebuf);
+
+	for (i = 0 ; i < len; i++) {
+		ebuf[(2*i)] = (buf[i] & 0xF) + 'a';
+		ebuf[(2*i)+1] = ((buf[i] >> 4) & 0xF) + 'a';
+	}
+
+	ebuf[2*len] = '\0';
+
+	return ebuf;
+}
+
+static char *decode(char *ebuf, size_t *outlen)
+{
+	int i;
+	char *buf;
+	int len;
+
+	len = strlen(ebuf);
+
+	buf = malloc(len/2);
+	assert(buf);
+
+	for (i = 0; i < len/2; i++) {
+		buf[i] = (((ebuf[(2*i)+1] - 'a') << 4) | (ebuf[(2*i)] - 'a'));
+	}
+
+	*outlen = len;
+	return buf;
+}
+
+static void gni_pmi_send(char *kvs, void *buffer, size_t len)
+{
+	char *data;
+	char key[64];
+	int rc;
+
+	data = encode(buffer, len);
+
+	snprintf(key, 64, "%s_rank%d", kvs, myRank);
+	rc = PMI_KVS_Put(kvsName, key, data);
+
+	if (debug) {
+		fprintf(stderr, "[%d]PMI_KVS_Put key: %s data %s, rc %d\n",
+			myRank, key, data, rc);
+	}
+
+	assert(rc == PMI_SUCCESS);
+
+	rc = PMI_KVS_Commit(kvsName);
+	assert(rc == PMI_SUCCESS);
+
+	free(data);
+}
+
+static void gni_pmi_receive(char *kvs, int rank, void *buffer, size_t len)
+{
+	char *data;
+	char key[64];
+	char *keyval = (char*)calloc(ENCODE_LEN(len), 1);
+	int rc;
+	size_t outlen;
+
+	snprintf(key, 64, "%s_rank%d", kvs, rank);
+
+	rc = PMI_KVS_Get(kvsName, key, keyval, ENCODE_LEN(len));
+
+	if (debug) {
+		fprintf(stderr, "[%d]PMI_KVS_Get key: %s keyval %s, rc %d\n",
+			myRank, key, keyval, rc);
+	}
+
+	assert(rc == PMI_SUCCESS);
+
+	data = decode(keyval, &outlen);
+	assert(data != NULL);
+
+	memcpy(buffer, data, outlen < len ? outlen : len);
+
+	free(keyval);
+	free(data);
+}
+
+int PMI_Allgather(void *src, void *targ, size_t len_per_rank)
+{
+	static int cnt = 0;
+	int i,nranks;
+	char *ptr;
+	char idstr[64];
+
+	snprintf(idstr, 64, "allg%d", cnt++);
+	gni_pmi_send(idstr, src, len_per_rank);
+	PMI_Barrier();
+	PMI_Get_size(&nranks);
+
+	for (i = 0; i < nranks; i++) {
+		ptr = ((char*)targ) + (i*len_per_rank);
+		gni_pmi_receive(idstr, i, ptr, len_per_rank);
+	}
+
+	return PMI_SUCCESS;
+}
+
+int PMI_Bcast(void *buf, int len)
+{
+	static int cnt = 0;
+	char idstr[64];
+
+	snprintf(idstr, 64, "bcst%d", cnt++);
+
+	if (!myRank) {
+		gni_pmi_send(idstr, buf, len);
+		PMI_Barrier();
+	} else {
+		PMI_Barrier();
+		gni_pmi_receive(idstr, 0, buf, len);
+	}
+
+	PMI_Barrier();
+
+	return PMI_SUCCESS;
+}
+
+static void pmi_coll_init(void)
+{
+	int len;
+	int rank;
+	int rc;
+
+	rc = PMI_Get_rank(&rank);
+	assert(rc == PMI_SUCCESS);
+
+	myRank = rank;
+
+	rc = PMI_KVS_Get_name_length_max(&len);
+	assert(rc == PMI_SUCCESS);
+
+	kvsName = (char *)calloc(len, sizeof(char));
+	rc = PMI_KVS_Get_my_name(kvsName, len);
+	assert(rc == PMI_SUCCESS);
+
+	PMI_Barrier();
+}
+#else
+#define pmi_coll_init()
+#endif /* CRAY_PMI_COLL */
 
 static void allgather(void *in, void *out, int len)
 {
@@ -122,19 +276,14 @@ void FT_Init(int *argc, char ***argv)
 
 	rc = PMI_Init(&first_spawned);
 	assert(rc == PMI_SUCCESS);
+
+	pmi_coll_init();
 }
 
 void FT_Rank(int *rank)
 {
 	int rc;
 	rc = PMI_Get_rank(rank);
-	assert(rc == PMI_SUCCESS);
-}
-
-void FT_Npes(int *npes)
-{
-	int rc;
-	rc = PMI_Get_numpes_on_smp(npes);
 	assert(rc == PMI_SUCCESS);
 }
 
