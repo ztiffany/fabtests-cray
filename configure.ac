@@ -67,9 +67,14 @@ AC_ARG_WITH([pmi],
             AC_HELP_STRING([--with-pmi], [Specify PMI location - default NO]),
             [AS_IF([test -d $withval/lib64], [pmi_libdir="lib64"], [pmi_libdir="lib"])
              CPPFLAGS="-I $withval/include $CPPFLAGS"
+             CPPFLAGS="-I $withval $CPPFLAGS"
              LDFLAGS="-L$withval/$pmi_libdir $LDFLAGS"
              AM_CONDITIONAL([HAVE_PMI], [true])],
             [AM_CONDITIONAL([HAVE_PMI], [false])])
+
+AC_CHECK_LIB([pmi], [PMI_Allgather],
+	     AM_CONDITIONAL([HAVE_CRAY_PMI], [true]),
+	     AM_CONDITIONAL([HAVE_CRAY_PMI], [false]))
 
 dnl Checks for libraries
 AC_CHECK_LIB([fabric], fi_getinfo, [],
