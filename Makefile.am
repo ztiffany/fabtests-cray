@@ -214,7 +214,8 @@ endif
 
 bin_PROGRAMS += \
 	perf/rdm_bw \
-	perf/rdm_latency
+	perf/rdm_latency \
+	perf/rdm_mbw_mr
 
 perf_rdm_bw_SOURCES = \
 	perf/rdm_bw.c \
@@ -225,6 +226,11 @@ perf_rdm_latency_SOURCES = \
 	perf/rdm_latency.c \
 	perf/ft_utils.c
 perf_rdm_latency_LDADD = libfabtests.la
+
+perf_rdm_mbw_mr_SOURCES = \
+	perf/rdm_mbw_mr.c \
+	perf/ft_utils.c
+perf_rdm_mbw_mr_LDADD = libfabtests.la
 
 EXTRA_DIST += \
 	ft_utils.h
