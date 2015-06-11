@@ -1,3 +1,4 @@
 # intermittent failures, one per line
 fabtest
 fi_msg
+fi_ud_pingpong
