@@ -85,7 +85,7 @@ struct fid_domain *dom;
 struct fid_ep *ep;
 struct fid_av *av;
 struct fid_cq *rcq, *scq;
-struct fid_mr *mr;
+struct fid_mr *r_mr, *l_mr;
 struct fi_context fi_ctx_send;
 struct fi_context fi_ctx_recv;
 struct fi_context fi_ctx_av;
@@ -179,7 +179,7 @@ static int bind_ep_res(void)
 	int ret;
 
 	/* Bind Send CQ with endpoint to collect send completions */
-	ret = fi_ep_bind(ep, &scq->fid, FI_SEND);
+	ret = fi_ep_bind(ep, &scq->fid, FI_SEND|FI_WRITE);
 	if (ret) {
 		FT_PRINTERR("fi_ep_bind", ret);
 		return ret;
@@ -333,6 +333,7 @@ int main(int argc, char *argv[])
 	hints->ep_attr->type	= FI_EP_RDM;
 	hints->caps		= FI_MSG | FI_RMA;
 	hints->mode		= ~0;
+	hints->domain_attr->mr_mode = FI_MR_BASIC;
 
 	if(numprocs != 2) {
 		if(myid == 0) {
@@ -364,19 +365,25 @@ int main(int argc, char *argv[])
 	r_buf = (char *) (((unsigned long) r_buf_original + (align_size - 1)) /
 				align_size * align_size);
 
-	ret = fi_mr_reg(dom, r_buf, MYBUFSIZE, 0, 0, 0, 0, &mr, NULL);
+	ret = fi_mr_reg(dom, r_buf, MYBUFSIZE, FI_REMOTE_WRITE, 0, 0, 0, &r_mr, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_mr_reg", ret);
 		return -1;
 	}
 
 	lbuf_desc.addr = (uint64_t)r_buf;
-	lbuf_desc.key = fi_mr_key(mr);
+	lbuf_desc.key = fi_mr_key(r_mr);
 
 	rbuf_descs = (buf_desc_t *)malloc(numprocs * sizeof(buf_desc_t));
 
 	/* Distribute memory keys */
 	FT_Allgather(&lbuf_desc, sizeof(lbuf_desc), rbuf_descs);
+
+	ret = fi_mr_reg(dom, s_buf, MYBUFSIZE, FI_WRITE, 0, 0, 0, &l_mr, NULL);
+	if (ret) {
+		FT_PRINTERR("fi_mr_reg", ret);
+		return -1;
+	}
 
 	if (myid == 0) {
 		fprintf(stdout, HEADER);
@@ -408,7 +415,7 @@ int main(int argc, char *argv[])
 				}
 
 				for (j = 0; j < window_size; j++) {
-					fi_rc = fi_write(ep, s_buf, size, NULL,
+					fi_rc = fi_write(ep, s_buf, size, l_mr,
 							fi_addrs[peer],
 							rbuf_descs[peer].addr,
 							rbuf_descs[peer].key,
