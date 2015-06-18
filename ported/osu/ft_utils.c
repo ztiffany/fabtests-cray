@@ -52,7 +52,7 @@
 
 static int myRank;
 static char *kvsName;
-static int debug = 0;
+static int debug;
 
 #define ENCODE_LEN(_len)	(2 * _len + 1)
 
@@ -121,7 +121,7 @@ static void gni_pmi_receive(char *kvs, int rank, void *buffer, size_t len)
 {
 	char *data;
 	char key[64];
-	char *keyval = (char*)calloc(ENCODE_LEN(len), 1);
+	char *keyval = calloc(ENCODE_LEN(len), 1);
 	int rc;
 	size_t outlen;
 
@@ -147,8 +147,8 @@ static void gni_pmi_receive(char *kvs, int rank, void *buffer, size_t len)
 
 int PMI_Allgather(void *src, void *targ, size_t len_per_rank)
 {
-	static int cnt = 0;
-	int i,nranks;
+	static int cnt;
+	int i, nranks;
 	char *ptr;
 	char idstr[64];
 
@@ -158,7 +158,7 @@ int PMI_Allgather(void *src, void *targ, size_t len_per_rank)
 	PMI_Get_size(&nranks);
 
 	for (i = 0; i < nranks; i++) {
-		ptr = ((char*)targ) + (i*len_per_rank);
+		ptr = ((char *)targ) + (i*len_per_rank);
 		gni_pmi_receive(idstr, i, ptr, len_per_rank);
 	}
 
@@ -199,7 +199,7 @@ static void pmi_coll_init(void)
 	rc = PMI_KVS_Get_name_length_max(&len);
 	assert(rc == PMI_SUCCESS);
 
-	kvsName = (char *)calloc(len, sizeof(char));
+	kvsName = calloc(len, sizeof(char));
 	rc = PMI_KVS_Get_my_name(kvsName, len);
 	assert(rc == PMI_SUCCESS);
 
@@ -211,7 +211,7 @@ static void pmi_coll_init(void)
 
 static void allgather(void *in, void *out, int len)
 {
-	static int *ivec_ptr=NULL, already_called=0, job_size=0;
+	static int *ivec_ptr, already_called, job_size;
 	int i, rc;
 	int my_rank;
 	char *tmp_buf, *out_ptr;
@@ -231,7 +231,7 @@ static void allgather(void *in, void *out, int len)
 		already_called = 1;
 	}
 
-	tmp_buf = (char *)malloc(job_size * len);
+	tmp_buf = malloc(job_size * len);
 	assert(tmp_buf);
 
 	rc = PMI_Allgather(in, tmp_buf, len);
@@ -239,7 +239,7 @@ static void allgather(void *in, void *out, int len)
 
 	out_ptr = out;
 
-	for (i=0; i<job_size; i++) {
+	for (i = 0; i < job_size; i++) {
 		memcpy(&out_ptr[len * ivec_ptr[i]], &tmp_buf[i * len], len);
 	}
 
@@ -259,6 +259,7 @@ void FT_Abort(void)
 void FT_Barrier(void)
 {
 	int rc;
+
 	rc = PMI_Barrier();
 	assert(rc == PMI_SUCCESS);
 }
@@ -283,6 +284,7 @@ void FT_Init(int *argc, char ***argv)
 void FT_Rank(int *rank)
 {
 	int rc;
+
 	rc = PMI_Get_rank(rank);
 	assert(rc == PMI_SUCCESS);
 }
@@ -295,19 +297,21 @@ void FT_Finalize(void)
 void FT_Job_size(int *nranks)
 {
 	int rc;
+
 	rc = PMI_Get_size(nranks);
 	assert(rc == PMI_SUCCESS);
 }
 
 void FT_Allgather(void *src, size_t len_per_rank, void *targ)
 {
-	allgather(src,targ,len_per_rank);
+	allgather(src, targ, len_per_rank);
 }
 
 void FT_Bcast(void *buffer, size_t len)
 {
 	int rc;
-	rc = PMI_Bcast(buffer,len);
+
+	rc = PMI_Bcast(buffer, len);
 	assert(rc == PMI_SUCCESS);
 }
 

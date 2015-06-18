@@ -48,7 +48,7 @@
 #include <rdma/fi_rma.h>
 
 #include "ft_utils.h"
-#include "../include/shared.h"
+#include "shared.h"
 
 #define DEFAULT_WINDOW       (64)
 
@@ -65,7 +65,8 @@
 #define MAX_ALIGNMENT        (65536)
 #define MY_BUF_SIZE (MAX_MSG_SIZE + MAX_ALIGNMENT)
 
-#define HEADER "# Libfabric Multiple Bandwidth and Message Rate Test \n"
+#define TEST_DESC "Libfabric Multiple Bandwidth and Message Rate Test"
+#define HEADER "# " TEST_DESC " \n"
 #ifndef FIELD_WIDTH
 #   define FIELD_WIDTH 20
 #endif
@@ -96,39 +97,20 @@ struct fi_context fi_ctx_av;
 void *addrs;
 fi_addr_t *fi_addrs;
 
-typedef struct buf_desc {
-	uint64_t addr;
-	uint64_t key;
-} buf_desc_t;
-
-buf_desc_t *rbuf_descs;
-
 int myid, numprocs;
 
 void print_usage(void)
 {
 	if (!myid) {
-		printf("\nOptions:\n");
-		printf("  -f <provider>\tspecific provider name eg IP, verbs\n");
-		printf("  -r=<0,1>         Print uni-directional message rate (default 1)\n");
-		printf("  -p=<pairs>       Number of pairs involved (default np / 2)\n");
-		printf("  -w=<window>      Number of messages sent before acknowledgement (64, 10)\n");
-		printf("                   [cannot be used with -v]\n");
-		printf("  -v               Vary the window size (default no)\n");
-		printf("                   [cannot be used with -w]\n");
-		printf("  -h               Print this help\n");
-		fflush(stdout);
+		ft_basic_usage(TEST_DESC);
+		FT_PRINT_OPTS_USAGE("-r <0,1> ", "Print uni-directional message rate (default 1)");
+		FT_PRINT_OPTS_USAGE("-p <pairs>", "Number of pairs involved (default np / 2)");
+		FT_PRINT_OPTS_USAGE("-w <window>", "Number of messages sent before "
+				    "acknowldgement (64, 10) [cannot be used with -v]");
+		FT_PRINT_OPTS_USAGE("-v", "Vary the window size (default no) "
+				    "[cannot be used with -w]");
+		FT_PRINT_OPTS_USAGE("-h", "Print this help");
 	}
-	return;
-}
-
-static double get_time(void)
-{
-	struct timeval tv;
-	double td;
-	gettimeofday(&tv, NULL);
-	td = tv.tv_sec + (tv.tv_usec * 0.000001);
-	return td;
 }
 
 static void free_ep_res(void)
@@ -144,7 +126,7 @@ static int alloc_ep_res(void)
 	struct fi_av_attr av_attr;
 	int ret;
 
-	memset(&cq_attr, 0, sizeof cq_attr);
+	memset(&cq_attr, 0, sizeof(cq_attr));
 	cq_attr.format = FI_CQ_FORMAT_CONTEXT;
 	cq_attr.wait_obj = FI_WAIT_NONE;
 	cq_attr.size = rx_depth;
@@ -163,7 +145,7 @@ static int alloc_ep_res(void)
 		goto err2;
 	}
 
-	memset(&av_attr, 0, sizeof av_attr);
+	memset(&av_attr, 0, sizeof(av_attr));
 	av_attr.type = fi->domain_attr->av_type ?
 			fi->domain_attr->av_type : FI_AV_TABLE;
 	av_attr.count = numprocs;
@@ -203,7 +185,7 @@ static int bind_ep_res(void)
 		FT_PRINTERR("fi_ep_bind", ret);
 		return ret;
 	}
-	
+
 	/* Bind AV with the endpoint to map addresses */
 	ret = fi_ep_bind(ep, &av->fid, 0);
 	if (ret) {
@@ -315,19 +297,20 @@ static int init_av(void)
 double calc_bw(int rank, int size, int num_pairs, int window_size, char *s_buf,
 		char *r_buf)
 {
-	double t_start = 0, t_end = 0, t = 0, maxtime = 0, *ts, bw = 0;
+	uint64_t t_start = 0, t_end = 0, t = 0, maxtime = 0, *ts;
+	double bw = 0;
 	int i, j, target;
 	int loop, skip;
 	int mult = (DEFAULT_WINDOW / window_size) > 0 ? (DEFAULT_WINDOW /
 			window_size) : 1;
 	int fi_rc;
 
-	for(i = 0; i < size; i++) {
+	for (i = 0; i < size; i++) {
 		s_buf[i] = 'a';
 		r_buf[i] = 'b';
 	}
 
-	if(size > LARGE_THRESHOLD) {
+	if (size > LARGE_THRESHOLD) {
 		loop = ITERS_LARGE * mult;
 		skip = WARMUP_ITERS_LARGE * mult;
 	} else {
@@ -337,16 +320,16 @@ double calc_bw(int rank, int size, int num_pairs, int window_size, char *s_buf,
 
 	FT_Barrier();
 
-	if(rank < num_pairs) {
+	if (rank < num_pairs) {
 		target = rank + num_pairs;
 
-		for(i = 0; i < loop + skip; i++) {
-			if(i == skip) {
+		for (i = 0; i < loop + skip; i++) {
+			if (i == skip) {
 				FT_Barrier();
-				t_start = get_time();
+				t_start = get_time_usec();
 			}
 
-			for(j = 0; j < window_size; j++) {
+			for (j = 0; j < window_size; j++) {
 				fi_rc = fi_send(ep, s_buf, size, NULL,
 						fi_addrs[target],
 						NULL);
@@ -360,17 +343,17 @@ double calc_bw(int rank, int size, int num_pairs, int window_size, char *s_buf,
 			wait_for_data_completion(rcq, 1);
 		}
 
-		t_end = get_time();
+		t_end = get_time_usec();
 		t = t_end - t_start;
-	} else if(rank < num_pairs * 2) {
+	} else if (rank < num_pairs * 2) {
 		target = rank - num_pairs;
 
-		for(i = 0; i < loop + skip; i++) {
-			if(i == skip) {
+		for (i = 0; i < loop + skip; i++) {
+			if (i == skip) {
 				FT_Barrier();
 			}
 
-			for(j = 0; j < window_size; j++) {
+			for (j = 0; j < window_size; j++) {
 				fi_rc = fi_recv(ep, r_buf, size, NULL,
 						fi_addrs[target], NULL);
 				assert(!fi_rc);
@@ -398,11 +381,11 @@ double calc_bw(int rank, int size, int num_pairs, int window_size, char *s_buf,
 	}
 	free(ts);
 
-	if(rank == 0) {
+	if (rank == 0) {
 		double tmp = num_pairs * size / 1e6;
 
 		tmp = tmp * loop * window_size;
-		bw = tmp / maxtime;
+		bw = tmp / (maxtime / 1e6);
 
 		return bw;
 	}
@@ -414,7 +397,6 @@ double calc_bw(int rank, int size, int num_pairs, int window_size, char *s_buf,
 int main(int argc, char *argv[])
 {
 	int op, ret;
-	buf_desc_t lbuf_desc;
 
 	char *s_buf, *r_buf;
 	int align_size;
@@ -437,16 +419,13 @@ int main(int argc, char *argv[])
 	if (!hints)
 		return -1;
 
-	while ((op = getopt(argc, argv, "f:hp:w:vr:")) != -1) {
+	while ((op = getopt(argc, argv, "hp:w:vr:" INFO_OPTS)) != -1) {
 		switch (op) {
-		case 'f':
-			hints->fabric_attr->prov_name = strdup(optarg);
-			break;
 		case 'p':
 			pairs = atoi(optarg);
-			if(pairs > (numprocs / 2)) {
-				if(!myid) print_usage();
-				return -1;
+			if (pairs > (numprocs / 2)) {
+				print_usage();
+				return EXIT_FAILURE;
 			}
 			break;
 		case 'w':
@@ -457,24 +436,27 @@ int main(int argc, char *argv[])
 			break;
 		case 'r':
 			print_rate = atoi(optarg);
-			if(0 != print_rate && 1 != print_rate) {
-				if(!myid) print_usage();
-				return -1;
+			if (0 != print_rate && 1 != print_rate) {
+				print_usage();
+				return EXIT_FAILURE;
 			}
+			break;
+		default:
+			ft_parseinfo(op, optarg, hints);
 			break;
 		case '?':
 		case 'h':
 			print_usage();
-			return -1;
+			return EXIT_FAILURE;
 		}
 	}
 
 	hints->ep_attr->type	= FI_EP_RDM;
-	hints->caps		= FI_MSG | FI_RMA;
-	hints->mode		= ~0;
+	hints->caps		= FI_MSG;
+	hints->mode		= FI_CONTEXT | FI_LOCAL_MR;
 
-	if(numprocs < 2) {
-		if(!myid) {
+	if (numprocs < 2) {
+		if (!myid) {
 			fprintf(stderr, "This test requires at least two processes\n");
 		}
 		FT_Finalize();
@@ -483,13 +465,13 @@ int main(int argc, char *argv[])
 
 	/* Fabric initialization */
 	ret = init_fabric();
-	if(ret) {
+	if (ret) {
 		fprintf(stderr, "Problem in fabric initialization\n");
 		return ret;
 	}
 
 	ret = init_av();
-	if(ret) {
+	if (ret) {
 		fprintf(stderr, "Problem in AV initialization\n");
 		return ret;
 	}
@@ -503,67 +485,51 @@ int main(int argc, char *argv[])
 	r_buf = (char *) (((unsigned long) r_buf_original + (align_size - 1)) /
 				align_size * align_size);
 
-	ret = fi_mr_reg(dom, r_buf, MY_BUF_SIZE, 0, 0, 0, 0, &mr, NULL);
-	if (ret) {
-		FT_PRINTERR("fi_mr_reg", ret);
-		return -1;
-	}
-
-	lbuf_desc.addr = (uint64_t)r_buf;
-	lbuf_desc.key = fi_mr_key(mr);
-
-	rbuf_descs = (buf_desc_t *)malloc(numprocs * sizeof(buf_desc_t));
-
-	/* Distribute memory keys */
-	FT_Allgather(&lbuf_desc, sizeof(lbuf_desc), rbuf_descs);
-
-	if(!myid) {
+	if (!myid) {
 		fprintf(stdout, HEADER);
-		if(window_varied) {
+		if (window_varied) {
 			fprintf(stdout, "# [ pairs: %d ] [ window size: varied ]\n", pairs);
 			fprintf(stdout, "\n# Uni-directional Bandwidth (MB/sec)\n");
-		}
-		else {
+		} else {
 			fprintf(stdout, "# [ pairs: %d ] [ window size: %d ]\n", pairs,
 					window_size);
-			if(print_rate) {
+			if (print_rate) {
 				fprintf(stdout, "%-*s%*s%*s\n", 10, "# Size", FIELD_WIDTH,
 						"MB/s", FIELD_WIDTH, "Messages/s");
-			}
-			else {
+			} else {
 				fprintf(stdout, "%-*s%*s\n", 10, "# Size", FIELD_WIDTH, "MB/s");
 			}
 		}
 		fflush(stdout);
 	}
 
-	if(window_varied) {
+	if (window_varied) {
 		int window_array[] = WINDOW_SIZES;
 		double ** bandwidth_results;
 		int log_val = 1, tmp_message_size = MAX_MSG_SIZE;
 		int i, j;
 
-		for(i = 0; i < WINDOW_SIZES_COUNT; i++) {
-			if(window_array[i] > window_size) {
+		for (i = 0; i < WINDOW_SIZES_COUNT; i++) {
+			if (window_array[i] > window_size) {
 				window_size = window_array[i];
 			}
 		}
 
-		while(tmp_message_size >>= 1) {
+		while (tmp_message_size >>= 1) {
 			log_val++;
 		}
 
-		bandwidth_results = (double **) malloc(sizeof(double *) * log_val);
+		bandwidth_results = (double **)malloc(sizeof(double *) * log_val);
 
-		for(i = 0; i < log_val; i++) {
+		for (i = 0; i < log_val; i++) {
 			bandwidth_results[i] = (double *)malloc(sizeof(double) *
 					WINDOW_SIZES_COUNT);
 		}
 
-		if(!myid) {
+		if (!myid) {
 			fprintf(stdout, "#      ");
 
-			for(i = 0; i < WINDOW_SIZES_COUNT; i++) {
+			for (i = 0; i < WINDOW_SIZES_COUNT; i++) {
 				fprintf(stdout, "  %10d", window_array[i]);
 			}
 
@@ -571,42 +537,42 @@ int main(int argc, char *argv[])
 			fflush(stdout);
 		}
 
-		for(j = 0, curr_size = 1; curr_size <= MAX_MSG_SIZE; curr_size *= 2, j++) {
-			if(!myid) {
+		for (j = 0, curr_size = 1; curr_size <= MAX_MSG_SIZE; curr_size *= 2, j++) {
+			if (!myid) {
 				fprintf(stdout, "%-7d", curr_size);
 			}
 
-			for(i = 0; i < WINDOW_SIZES_COUNT; i++) {
+			for (i = 0; i < WINDOW_SIZES_COUNT; i++) {
 				bandwidth_results[j][i] = calc_bw(myid, curr_size, pairs,
 						window_array[i], s_buf, r_buf);
 
-				if(!myid) {
+				if (!myid) {
 					fprintf(stdout, "  %10.*f", FLOAT_PRECISION,
 							bandwidth_results[j][i]);
 				}
 			}
 
-			if(!myid) {
+			if (!myid) {
 				fprintf(stdout, "\n");
 				fflush(stdout);
 			}
 		}
 
-		if(!myid && print_rate) {
+		if (!myid && print_rate) {
 			fprintf(stdout, "\n# Message Rate Profile\n");
 			fprintf(stdout, "#      ");
 
-			for(i = 0; i < WINDOW_SIZES_COUNT; i++) {
+			for (i = 0; i < WINDOW_SIZES_COUNT; i++) {
 				fprintf(stdout, "  %10d", window_array[i]);
 			}
 
 			fprintf(stdout, "\n");
 			fflush(stdout);
 
-			for(c = 0, curr_size = 1; curr_size <= MAX_MSG_SIZE; curr_size *= 2) {
+			for (c = 0, curr_size = 1; curr_size <= MAX_MSG_SIZE; curr_size *= 2) {
 				fprintf(stdout, "%-7d", curr_size);
 
-				for(i = 0; i < WINDOW_SIZES_COUNT; i++) {
+				for (i = 0; i < WINDOW_SIZES_COUNT; i++) {
 					double rate = 1e6 * bandwidth_results[c][i] / curr_size;
 
 					fprintf(stdout, "  %10.2f", rate);
@@ -619,15 +585,15 @@ int main(int argc, char *argv[])
 		}
 	} else {
 		/* Just one window size */
-		for(curr_size = 1; curr_size <= MAX_MSG_SIZE; curr_size *= 2) {
+		for (curr_size = 1; curr_size <= MAX_MSG_SIZE; curr_size *= 2) {
 			double bw, rate;
 
 			bw = calc_bw(myid, curr_size, pairs, window_size, s_buf, r_buf);
 
-			if(!myid) {
+			if (!myid) {
 				rate = 1e6 * bw / curr_size;
 
-				if(print_rate) {
+				if (print_rate) {
 					fprintf(stdout, "%-*d%*.*f%*.*f\n", 10, curr_size,
 							FIELD_WIDTH, FLOAT_PRECISION, bw, FIELD_WIDTH,
 							FLOAT_PRECISION, rate);
@@ -640,6 +606,17 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
+
+	FT_Barrier();
+
+	free_ep_res();
+
+	fi_close(&ep->fid);
+	fi_close(&dom->fid);
+	fi_close(&fab->fid);
+
+	fi_freeinfo(hints);
+	fi_freeinfo(fi);
 
 	FT_Barrier();
 	FT_Finalize();
