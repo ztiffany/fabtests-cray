@@ -48,15 +48,14 @@
 #include <rdma/fi_rma.h>
 
 #include "ft_utils.h"
-#include "../include/shared.h"
-
-#define MAX_REQ_NUM 1000
+#include "shared.h"
 
 #define MAX_ALIGNMENT 65536
 #define MAX_MSG_SIZE (1<<22)
 #define MYBUFSIZE (MAX_MSG_SIZE + MAX_ALIGNMENT)
 
-#define HEADER "# Libfabric Bandwidth Test \n"
+#define TEST_DESC "Libfabric Latency Test"
+#define HEADER "# " TEST_DESC " \n"
 #ifndef FIELD_WIDTH
 #   define FIELD_WIDTH 20
 #endif
@@ -64,14 +63,10 @@
 #   define FLOAT_PRECISION 2
 #endif
 
-int loop = 100;
-int window_size = 64;
-int skip = 10;
-
-int loop_large = 20;
-int window_size_large = 64;
-int skip_large = 2;
-
+int skip = 1000;
+int loop = 10000;
+int skip_large = 10;
+int loop_large = 100;
 int large_message_size = 8192;
 
 char s_buf_original[MYBUFSIZE];
@@ -85,7 +80,7 @@ struct fid_domain *dom;
 struct fid_ep *ep;
 struct fid_av *av;
 struct fid_cq *rcq, *scq;
-struct fid_mr *r_mr, *l_mr;
+struct fid_mr *mr;
 struct fi_context fi_ctx_send;
 struct fi_context fi_ctx_recv;
 struct fi_context fi_ctx_av;
@@ -93,30 +88,13 @@ struct fi_context fi_ctx_av;
 void *addrs;
 fi_addr_t *fi_addrs;
 
-typedef struct buf_desc {
-	uint64_t addr;
-	uint64_t key;
-} buf_desc_t;
-
-buf_desc_t *rbuf_descs;
-
 int myid, numprocs;
 
-void print_usage(void)
+void print_usage()
 {
-	fprintf(stderr, "\nOptions:\n");
-	fprintf(stderr, "  -f <provider>\tspecific provider name eg IP, verbs\n");
-	fprintf(stderr, "  -h\t\tdisplay this help output\n");
+	if (!myid)
+		ft_basic_usage(TEST_DESC);
 	return;
-}
-
-static double get_time(void)
-{
-	struct timeval tv;
-	double td;
-	gettimeofday(&tv, NULL);
-	td = tv.tv_sec + (tv.tv_usec * 0.000001);
-	return td;
 }
 
 static void free_ep_res(void)
@@ -179,7 +157,7 @@ static int bind_ep_res(void)
 	int ret;
 
 	/* Bind Send CQ with endpoint to collect send completions */
-	ret = fi_ep_bind(ep, &scq->fid, FI_SEND|FI_WRITE);
+	ret = fi_ep_bind(ep, &scq->fid, FI_SEND);
 	if (ret) {
 		FT_PRINTERR("fi_ep_bind", ret);
 		return ret;
@@ -302,12 +280,11 @@ static int init_av(void)
 
 int main(int argc, char *argv[])
 {
-	int i, j, peer;
+	int i, peer;
 	int size, align_size;
 	char *s_buf, *r_buf;
-	double t_start = 0.0, t_end = 0.0, t = 0.0;
+	uint64_t t_start = 0, t_end = 0;
 	int op, ret;
-	buf_desc_t lbuf_desc;
 	ssize_t fi_rc;
 
 	FT_Init(&argc, &argv);
@@ -318,22 +295,21 @@ int main(int argc, char *argv[])
 	if (!hints)
 		return -1;
 
-	while ((op = getopt(argc, argv, "f:h")) != -1) {
-		switch (op) {			
-		case 'f':
-			hints->fabric_attr->prov_name = strdup(optarg);
+	while ((op = getopt(argc, argv, "h" INFO_OPTS)) != -1) {
+		switch (op) {
+		default:
+			ft_parseinfo(op, optarg, hints);
 			break;
 		case '?':
 		case 'h':
 			print_usage();
-			return -1;
+			return EXIT_FAILURE;
 		}
 	}
 
 	hints->ep_attr->type	= FI_EP_RDM;
-	hints->caps		= FI_MSG | FI_RMA;
-	hints->mode		= ~0;
-	hints->domain_attr->mr_mode = FI_MR_BASIC;
+	hints->caps		= FI_MSG;
+	hints->mode		= FI_CONTEXT | FI_LOCAL_MR;
 
 	if(numprocs != 2) {
 		if(myid == 0) {
@@ -362,105 +338,80 @@ int main(int argc, char *argv[])
 
 	s_buf = (char *) (((unsigned long) s_buf_original + (align_size - 1)) /
 				align_size * align_size);
+
 	r_buf = (char *) (((unsigned long) r_buf_original + (align_size - 1)) /
 				align_size * align_size);
 
-	ret = fi_mr_reg(dom, r_buf, MYBUFSIZE, FI_REMOTE_WRITE, 0, 0, 0, &r_mr, NULL);
-	if (ret) {
-		FT_PRINTERR("fi_mr_reg", ret);
-		return -1;
-	}
-
-	lbuf_desc.addr = (uint64_t)r_buf;
-	lbuf_desc.key = fi_mr_key(r_mr);
-
-	rbuf_descs = (buf_desc_t *)malloc(numprocs * sizeof(buf_desc_t));
-
-	/* Distribute memory keys */
-	FT_Allgather(&lbuf_desc, sizeof(lbuf_desc), rbuf_descs);
-
-	ret = fi_mr_reg(dom, s_buf, MYBUFSIZE, FI_WRITE, 0, 0, 0, &l_mr, NULL);
-	if (ret) {
-		FT_PRINTERR("fi_mr_reg", ret);
-		return -1;
-	}
-
-	if (myid == 0) {
+	if(myid == 0) {
 		fprintf(stdout, HEADER);
-		fprintf(stdout, "%-*s%*s\n", 10, "# Size", FIELD_WIDTH,
-				"Bandwidth (MB/s)");
+		fprintf(stdout, "%-*s%*s\n", 10, "# Size", FIELD_WIDTH, "Latency (us)");
 		fflush(stdout);
 	}
 
-	/* Bandwidth test */
-	for (size = 1; size <= MAX_MSG_SIZE; size *= 2) {
-		/* touch the data */
-		for (i = 0; i < size; i++) {
+	for(size = 0; size <= MAX_MSG_SIZE; size = (size ? size * 2 : 1)) {
+		for(i = 0; i < size; i++) {
 			s_buf[i] = 'a';
 			r_buf[i] = 'b';
 		}
 
-		if (size > large_message_size) {
+		if(size > large_message_size) {
 			loop = loop_large;
 			skip = skip_large;
-			window_size = window_size_large;
 		}
 
-		if (myid == 0) {
+		FT_Barrier();
+
+		if(myid == 0) {
 			peer = 1;
+			for(i = 0; i < loop + skip; i++) {
+				if(i == skip) t_start = get_time_usec();
 
-			for (i = 0; i < loop + skip; i++) {
-				if (i == skip) {
-					t_start = get_time();
-				}
+				fi_rc = fi_send(ep, s_buf, size, NULL,
+						fi_addrs[peer], NULL);
+				assert(!fi_rc);
+				wait_for_data_completion(scq, 1);
 
-				for (j = 0; j < window_size; j++) {
-					fi_rc = fi_write(ep, s_buf, size, l_mr,
-							fi_addrs[peer],
-							rbuf_descs[peer].addr,
-							rbuf_descs[peer].key,
-							(void *)(intptr_t)j);
-					if (fi_rc) {
-						FT_PRINTERR("fi_write", fi_rc);
-						return fi_rc;
-					}
-				}
-
-				wait_for_data_completion(scq, window_size);
+				fi_rc = fi_recv(ep, r_buf, size, NULL,
+						fi_addrs[peer], NULL);
+				assert(!fi_rc);
+				wait_for_data_completion(rcq, 1);
 			}
 
-			fi_rc = fi_send(ep, s_buf, 4, NULL,
-					fi_addrs[peer],
-					NULL);
-			assert(!fi_rc);
-			fi_rc = fi_recv(ep, s_buf, 4, NULL,
-					fi_addrs[peer],
-					NULL);
-			assert(!fi_rc);
-
-			t_end = get_time();
-			t = t_end - t_start;
-		} else if (myid == 1) {
+			t_end = get_time_usec();
+		} else if(myid == 1) {
 			peer = 0;
+			for(i = 0; i < loop + skip; i++) {
+				fi_rc = fi_recv(ep, r_buf, size, NULL,
+						fi_addrs[peer], NULL);
+				assert(!fi_rc);
+				wait_for_data_completion(rcq, 1);
 
-			fi_rc = fi_recv(ep, s_buf, 4, NULL,
-					fi_addrs[peer],
-					NULL);
-			assert(!fi_rc);
-			fi_rc = fi_send(ep, s_buf, 4, NULL,
-					fi_addrs[peer],
-					NULL);
-			assert(!fi_rc);
+				fi_rc = fi_send(ep, s_buf, size, NULL,
+						fi_addrs[peer], NULL);
+				assert(!fi_rc);
+				wait_for_data_completion(scq, 1);
+			}
 		}
 
-		if (myid == 0) {
-			double tmp = size / 1e6 * loop * window_size;
+		if(myid == 0) {
+			double latency = (t_end - t_start) / (2.0 * loop);
 
 			fprintf(stdout, "%-*d%*.*f\n", 10, size, FIELD_WIDTH,
-					FLOAT_PRECISION, tmp / t);
+					FLOAT_PRECISION, latency);
 			fflush(stdout);
 		}
 	}
+
+	FT_Barrier();
+
+	free_ep_res();
+
+	fi_close(&ep->fid);
+	fi_close(&dom->fid);
+	fi_close(&fab->fid);
+
+	fi_freeinfo(hints);
+	fi_freeinfo(fi);
 
 	FT_Barrier();
 	FT_Finalize();

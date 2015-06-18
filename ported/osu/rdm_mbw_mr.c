@@ -48,7 +48,7 @@
 #include <rdma/fi_rma.h>
 
 #include "ft_utils.h"
-#include "../include/shared.h"
+#include "shared.h"
 
 #define DEFAULT_WINDOW       (64)
 
@@ -65,7 +65,8 @@
 #define MAX_ALIGNMENT        (65536)
 #define MY_BUF_SIZE (MAX_MSG_SIZE + MAX_ALIGNMENT)
 
-#define HEADER "# Libfabric Multiple Bandwidth and Message Rate Test \n"
+#define TEST_DESC "Libfabric Multiple Bandwidth and Message Rate Test"
+#define HEADER "# " TEST_DESC " \n"
 #ifndef FIELD_WIDTH
 #   define FIELD_WIDTH 20
 #endif
@@ -96,39 +97,21 @@ struct fi_context fi_ctx_av;
 void *addrs;
 fi_addr_t *fi_addrs;
 
-typedef struct buf_desc {
-	uint64_t addr;
-	uint64_t key;
-} buf_desc_t;
-
-buf_desc_t *rbuf_descs;
-
 int myid, numprocs;
 
-void print_usage(void)
+void print_usage()
 {
-	if (!myid) {
-		printf("\nOptions:\n");
-		printf("  -f <provider>\tspecific provider name eg IP, verbs\n");
-		printf("  -r=<0,1>         Print uni-directional message rate (default 1)\n");
-		printf("  -p=<pairs>       Number of pairs involved (default np / 2)\n");
-		printf("  -w=<window>      Number of messages sent before acknowledgement (64, 10)\n");
-		printf("                   [cannot be used with -v]\n");
-		printf("  -v               Vary the window size (default no)\n");
-		printf("                   [cannot be used with -w]\n");
-		printf("  -h               Print this help\n");
-		fflush(stdout);
+	if(!myid) {
+		ft_basic_usage(TEST_DESC);
+		FT_PRINT_OPTS_USAGE("-r <0,1> ", "Print uni-directional message rate (default 1)");
+		FT_PRINT_OPTS_USAGE("-p <pairs>", "Number of pairs involved (default np / 2)");
+		FT_PRINT_OPTS_USAGE("-w <window>", "Number of messages sent before "
+				    "acknowledgement (64, 10) [cannot be used with -v]");
+		FT_PRINT_OPTS_USAGE("-v", "Vary the window size (default no) "
+				    "[cannot be used with -w]");
+		FT_PRINT_OPTS_USAGE("-h", "Print this help");
 	}
 	return;
-}
-
-static double get_time(void)
-{
-	struct timeval tv;
-	double td;
-	gettimeofday(&tv, NULL);
-	td = tv.tv_sec + (tv.tv_usec * 0.000001);
-	return td;
 }
 
 static void free_ep_res(void)
@@ -315,7 +298,8 @@ static int init_av(void)
 double calc_bw(int rank, int size, int num_pairs, int window_size, char *s_buf,
 		char *r_buf)
 {
-	double t_start = 0, t_end = 0, t = 0, maxtime = 0, *ts, bw = 0;
+	uint64_t t_start = 0, t_end = 0, t = 0, maxtime = 0, *ts;
+	double bw = 0;
 	int i, j, target;
 	int loop, skip;
 	int mult = (DEFAULT_WINDOW / window_size) > 0 ? (DEFAULT_WINDOW /
@@ -343,7 +327,7 @@ double calc_bw(int rank, int size, int num_pairs, int window_size, char *s_buf,
 		for(i = 0; i < loop + skip; i++) {
 			if(i == skip) {
 				FT_Barrier();
-				t_start = get_time();
+				t_start = get_time_usec();
 			}
 
 			for(j = 0; j < window_size; j++) {
@@ -360,7 +344,7 @@ double calc_bw(int rank, int size, int num_pairs, int window_size, char *s_buf,
 			wait_for_data_completion(rcq, 1);
 		}
 
-		t_end = get_time();
+		t_end = get_time_usec();
 		t = t_end - t_start;
 	} else if(rank < num_pairs * 2) {
 		target = rank - num_pairs;
@@ -402,7 +386,7 @@ double calc_bw(int rank, int size, int num_pairs, int window_size, char *s_buf,
 		double tmp = num_pairs * size / 1e6;
 
 		tmp = tmp * loop * window_size;
-		bw = tmp / maxtime;
+		bw = tmp / (maxtime / 1e6);
 
 		return bw;
 	}
@@ -414,7 +398,6 @@ double calc_bw(int rank, int size, int num_pairs, int window_size, char *s_buf,
 int main(int argc, char *argv[])
 {
 	int op, ret;
-	buf_desc_t lbuf_desc;
 
 	char *s_buf, *r_buf;
 	int align_size;
@@ -437,16 +420,13 @@ int main(int argc, char *argv[])
 	if (!hints)
 		return -1;
 
-	while ((op = getopt(argc, argv, "f:hp:w:vr:")) != -1) {
+	while ((op = getopt(argc, argv, "hp:w:vr:" INFO_OPTS)) != -1) {
 		switch (op) {
-		case 'f':
-			hints->fabric_attr->prov_name = strdup(optarg);
-			break;
 		case 'p':
 			pairs = atoi(optarg);
 			if(pairs > (numprocs / 2)) {
-				if(!myid) print_usage();
-				return -1;
+				print_usage();
+				return EXIT_FAILURE;
 			}
 			break;
 		case 'w':
@@ -458,20 +438,23 @@ int main(int argc, char *argv[])
 		case 'r':
 			print_rate = atoi(optarg);
 			if(0 != print_rate && 1 != print_rate) {
-				if(!myid) print_usage();
-				return -1;
+				print_usage();
+				return EXIT_FAILURE;
 			}
+			break;
+		default:
+			ft_parseinfo(op, optarg, hints);
 			break;
 		case '?':
 		case 'h':
 			print_usage();
-			return -1;
+			return EXIT_FAILURE;
 		}
 	}
 
 	hints->ep_attr->type	= FI_EP_RDM;
-	hints->caps		= FI_MSG | FI_RMA;
-	hints->mode		= ~0;
+	hints->caps		= FI_MSG;
+	hints->mode		= FI_CONTEXT | FI_LOCAL_MR;
 
 	if(numprocs < 2) {
 		if(!myid) {
@@ -502,20 +485,6 @@ int main(int argc, char *argv[])
 				align_size * align_size);
 	r_buf = (char *) (((unsigned long) r_buf_original + (align_size - 1)) /
 				align_size * align_size);
-
-	ret = fi_mr_reg(dom, r_buf, MY_BUF_SIZE, 0, 0, 0, 0, &mr, NULL);
-	if (ret) {
-		FT_PRINTERR("fi_mr_reg", ret);
-		return -1;
-	}
-
-	lbuf_desc.addr = (uint64_t)r_buf;
-	lbuf_desc.key = fi_mr_key(mr);
-
-	rbuf_descs = (buf_desc_t *)malloc(numprocs * sizeof(buf_desc_t));
-
-	/* Distribute memory keys */
-	FT_Allgather(&lbuf_desc, sizeof(lbuf_desc), rbuf_descs);
 
 	if(!myid) {
 		fprintf(stdout, HEADER);
@@ -640,6 +609,17 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
+
+	FT_Barrier();
+
+	free_ep_res();
+
+	fi_close(&ep->fid);
+	fi_close(&dom->fid);
+	fi_close(&fab->fid);
+
+	fi_freeinfo(hints);
+	fi_freeinfo(fi);
 
 	FT_Barrier();
 	FT_Finalize();

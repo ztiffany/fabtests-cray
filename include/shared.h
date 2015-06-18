@@ -87,6 +87,7 @@ enum {
 void ft_parseinfo(int op, char *optarg, struct fi_info *hints);
 void ft_parse_addr_opts(int op, char *optarg, struct cs_opts *opts);
 void ft_parsecsopts(int op, char *optarg, struct cs_opts *opts);
+void ft_basic_usage(char *desc);
 void ft_usage(char *name, char *desc);
 void ft_csusage(char *name, char *desc);
 void ft_fill_buf(void *buf, int size);
@@ -165,6 +166,8 @@ enum ft_rma_opcodes {
 	FT_RMA_WRITE,
 	FT_RMA_WRITEDATA,
 };
+
+uint64_t get_time_usec(void);
 
 #ifdef __cplusplus
 }

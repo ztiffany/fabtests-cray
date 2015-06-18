@@ -218,24 +218,24 @@ AM_CFLAGS += -DCRAY_PMI_COLL
 endif
 
 bin_PROGRAMS += \
-	perf/rdm_bw \
-	perf/rdm_latency \
-	perf/rdm_mbw_mr
+	ported/osu/rdm_bw \
+	ported/osu/rdm_latency \
+	ported/osu/rdm_mbw_mr
 
-perf_rdm_bw_SOURCES = \
-	perf/rdm_bw.c \
-	perf/ft_utils.c
-perf_rdm_bw_LDADD = libfabtests.la
+ported_osu_rdm_bw_SOURCES = \
+	ported/osu/rdm_bw.c \
+	ported/osu/ft_utils.c
+ported_osu_rdm_bw_LDADD = libfabtests.la
 
-perf_rdm_latency_SOURCES = \
-	perf/rdm_latency.c \
-	perf/ft_utils.c
-perf_rdm_latency_LDADD = libfabtests.la
+ported_osu_rdm_latency_SOURCES = \
+	ported/osu/rdm_latency.c \
+	ported/osu/ft_utils.c
+ported_osu_rdm_latency_LDADD = libfabtests.la
 
-perf_rdm_mbw_mr_SOURCES = \
-	perf/rdm_mbw_mr.c \
-	perf/ft_utils.c
-perf_rdm_mbw_mr_LDADD = libfabtests.la
+ported_osu_rdm_mbw_mr_SOURCES = \
+	ported/osu/rdm_mbw_mr.c \
+	ported/osu/ft_utils.c
+ported_osu_rdm_mbw_mr_LDADD = libfabtests.la
 
 EXTRA_DIST += \
 	ft_utils.h

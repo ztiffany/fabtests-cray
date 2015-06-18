@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/time.h>
 
 #include <rdma/fi_errno.h>
 #include <rdma/fi_endpoint.h>
@@ -368,6 +369,19 @@ void show_perf_mr(int tsize, int iters, struct timespec *start,
 	printf(" }\n");
 }
 
+void ft_basic_usage(char *desc)
+{
+	if (desc)
+		fprintf(stderr, "\n%s\n", desc);
+
+	fprintf(stderr, "\nOptions:\n");
+	FT_PRINT_OPTS_USAGE("-n <domain>", "domain name");
+	FT_PRINT_OPTS_USAGE("-f <provider>", "specific provider name eg sockets, verbs");
+	FT_PRINT_OPTS_USAGE("-h", "display this help output");
+
+	return;
+}
+
 void ft_usage(char *name, char *desc)
 {
 	fprintf(stderr, "Usage:\n");
@@ -528,3 +542,13 @@ int ft_check_buf(void *buf, int size)
 
 	return 0;
 }
+
+uint64_t get_time_usec(void)
+{
+	struct timeval tv;
+	uint64_t usecs;
+	gettimeofday(&tv, NULL);
+	usecs = (tv.tv_sec * 1000000) + tv.tv_usec;
+	return usecs;
+}
+
