@@ -547,6 +547,7 @@ uint64_t get_time_usec(void)
 {
 	struct timeval tv;
 	uint64_t usecs;
+
 	gettimeofday(&tv, NULL);
 	usecs = (tv.tv_sec * 1000000) + tv.tv_usec;
 	return usecs;

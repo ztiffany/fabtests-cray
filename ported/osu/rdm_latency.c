@@ -90,11 +90,10 @@ fi_addr_t *fi_addrs;
 
 int myid, numprocs;
 
-void print_usage()
+void print_usage(void)
 {
 	if (!myid)
 		ft_basic_usage(TEST_DESC);
-	return;
 }
 
 static void free_ep_res(void)
@@ -110,7 +109,7 @@ static int alloc_ep_res(void)
 	struct fi_av_attr av_attr;
 	int ret;
 
-	memset(&cq_attr, 0, sizeof cq_attr);
+	memset(&cq_attr, 0, sizeof(cq_attr));
 	cq_attr.format = FI_CQ_FORMAT_CONTEXT;
 	cq_attr.wait_obj = FI_WAIT_NONE;
 	cq_attr.size = rx_depth;
@@ -129,7 +128,7 @@ static int alloc_ep_res(void)
 		goto err2;
 	}
 
-	memset(&av_attr, 0, sizeof av_attr);
+	memset(&av_attr, 0, sizeof(av_attr));
 	av_attr.type = fi->domain_attr->av_type ?
 			fi->domain_attr->av_type : FI_AV_TABLE;
 	av_attr.count = 2;
@@ -169,7 +168,7 @@ static int bind_ep_res(void)
 		FT_PRINTERR("fi_ep_bind", ret);
 		return ret;
 	}
-	
+
 	/* Bind AV with the endpoint to map addresses */
 	ret = fi_ep_bind(ep, &av->fid, 0);
 	if (ret) {
@@ -311,8 +310,8 @@ int main(int argc, char *argv[])
 	hints->caps		= FI_MSG;
 	hints->mode		= FI_CONTEXT | FI_LOCAL_MR;
 
-	if(numprocs != 2) {
-		if(myid == 0) {
+	if (numprocs != 2) {
+		if (myid == 0) {
 			fprintf(stderr, "This test requires exactly two processes\n");
 		}
 		FT_Finalize();
@@ -321,13 +320,13 @@ int main(int argc, char *argv[])
 
 	/* Fabric initialization */
 	ret = init_fabric();
-	if(ret) {
+	if (ret) {
 		fprintf(stderr, "Problem in fabric initialization\n");
 		return ret;
 	}
 
 	ret = init_av();
-	if(ret) {
+	if (ret) {
 		fprintf(stderr, "Problem in AV initialization\n");
 		return ret;
 	}
@@ -348,23 +347,24 @@ int main(int argc, char *argv[])
 		fflush(stdout);
 	}
 
-	for(size = 0; size <= MAX_MSG_SIZE; size = (size ? size * 2 : 1)) {
-		for(i = 0; i < size; i++) {
+	for (size = 0; size <= MAX_MSG_SIZE; size = (size ? size * 2 : 1)) {
+		for (i = 0; i < size; i++) {
 			s_buf[i] = 'a';
 			r_buf[i] = 'b';
 		}
 
-		if(size > large_message_size) {
+		if (size > large_message_size) {
 			loop = loop_large;
 			skip = skip_large;
 		}
 
 		FT_Barrier();
 
-		if(myid == 0) {
+		if (myid == 0) {
 			peer = 1;
-			for(i = 0; i < loop + skip; i++) {
-				if(i == skip) t_start = get_time_usec();
+			for (i = 0; i < loop + skip; i++) {
+				if (i == skip)
+					t_start = get_time_usec();
 
 				fi_rc = fi_send(ep, s_buf, size, NULL,
 						fi_addrs[peer], NULL);
@@ -378,9 +378,9 @@ int main(int argc, char *argv[])
 			}
 
 			t_end = get_time_usec();
-		} else if(myid == 1) {
+		} else if (myid == 1) {
 			peer = 0;
-			for(i = 0; i < loop + skip; i++) {
+			for (i = 0; i < loop + skip; i++) {
 				fi_rc = fi_recv(ep, r_buf, size, NULL,
 						fi_addrs[peer], NULL);
 				assert(!fi_rc);
@@ -393,7 +393,7 @@ int main(int argc, char *argv[])
 			}
 		}
 
-		if(myid == 0) {
+		if (myid == 0) {
 			double latency = (t_end - t_start) / (2.0 * loop);
 
 			fprintf(stdout, "%-*d%*.*f\n", 10, size, FIELD_WIDTH,

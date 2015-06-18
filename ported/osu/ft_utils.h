@@ -37,7 +37,7 @@
 
 #include "pmi.h"
 
-void FT_Init(int *,char ***);
+void FT_Init(int *, char ***);
 void FT_Abort(void);
 void FT_Exit(void);
 void FT_Rank(int *);
@@ -45,6 +45,6 @@ void FT_Finalize(void);
 void FT_Barrier(void);
 void FT_Job_size(int *);
 void FT_Allgather(void *src, size_t, void *dest);
-void FT_Bcast(void *,size_t);
+void FT_Bcast(void *, size_t);
 
 #endif /* _FT_UTILS_H */

@@ -100,11 +100,10 @@ buf_desc_t *rbuf_descs;
 
 int myid, numprocs;
 
-void print_usage()
+void print_usage(void)
 {
 	if (!myid)
 		ft_basic_usage(TEST_DESC);
-	return;
 }
 
 static void free_ep_res(void)
@@ -120,7 +119,7 @@ static int alloc_ep_res(void)
 	struct fi_av_attr av_attr;
 	int ret;
 
-	memset(&cq_attr, 0, sizeof cq_attr);
+	memset(&cq_attr, 0, sizeof(cq_attr));
 	cq_attr.format = FI_CQ_FORMAT_CONTEXT;
 	cq_attr.wait_obj = FI_WAIT_NONE;
 	cq_attr.size = rx_depth;
@@ -139,7 +138,7 @@ static int alloc_ep_res(void)
 		goto err2;
 	}
 
-	memset(&av_attr, 0, sizeof av_attr);
+	memset(&av_attr, 0, sizeof(av_attr));
 	av_attr.type = fi->domain_attr->av_type ?
 			fi->domain_attr->av_type : FI_AV_TABLE;
 	av_attr.count = 2;
@@ -179,7 +178,7 @@ static int bind_ep_res(void)
 		FT_PRINTERR("fi_ep_bind", ret);
 		return ret;
 	}
-	
+
 	/* Bind AV with the endpoint to map addresses */
 	ret = fi_ep_bind(ep, &av->fid, 0);
 	if (ret) {
@@ -323,8 +322,8 @@ int main(int argc, char *argv[])
 	hints->mode		= FI_CONTEXT | FI_LOCAL_MR;
 	hints->domain_attr->mr_mode = FI_MR_BASIC;
 
-	if(numprocs != 2) {
-		if(myid == 0) {
+	if (numprocs != 2) {
+		if (myid == 0) {
 			fprintf(stderr, "This test requires exactly two processes\n");
 		}
 		FT_Finalize();
@@ -333,13 +332,13 @@ int main(int argc, char *argv[])
 
 	/* Fabric initialization */
 	ret = init_fabric();
-	if(ret) {
+	if (ret) {
 		fprintf(stderr, "Problem in fabric initialization\n");
 		return ret;
 	}
 
 	ret = init_av();
-	if(ret) {
+	if (ret) {
 		fprintf(stderr, "Problem in AV initialization\n");
 		return ret;
 	}
