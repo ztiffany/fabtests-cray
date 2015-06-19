@@ -307,7 +307,7 @@ int main(int argc, char *argv[])
 	}
 
 	hints->ep_attr->type	= FI_EP_RDM;
-	hints->caps		= FI_MSG;
+	hints->caps		= FI_MSG | FI_DIRECTED_RECV;
 	hints->mode		= FI_CONTEXT | FI_LOCAL_MR;
 
 	if (numprocs != 2) {
