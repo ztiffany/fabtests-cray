@@ -167,7 +167,7 @@ int PMI_Allgather(void *src, void *targ, size_t len_per_rank)
 
 int PMI_Bcast(void *buf, int len)
 {
-	static int cnt = 0;
+	static int cnt;
 	char idstr[64];
 
 	snprintf(idstr, 64, "bcst%d", cnt++);
