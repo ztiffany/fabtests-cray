@@ -505,7 +505,7 @@ int main(int argc, char *argv[])
 
 	if (window_varied) {
 		int window_array[] = WINDOW_SIZES;
-		double ** bandwidth_results;
+		double **bandwidth_results;
 		int log_val = 1, tmp_message_size = MAX_MSG_SIZE;
 		int i, j;
 

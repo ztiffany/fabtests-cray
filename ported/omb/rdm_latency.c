@@ -341,7 +341,7 @@ int main(int argc, char *argv[])
 	r_buf = (char *) (((unsigned long) r_buf_original + (align_size - 1)) /
 				align_size * align_size);
 
-	if(myid == 0) {
+	if (myid == 0) {
 		fprintf(stdout, HEADER);
 		fprintf(stdout, "%-*s%*s\n", 10, "# Size", FIELD_WIDTH, "Latency (us)");
 		fflush(stdout);
