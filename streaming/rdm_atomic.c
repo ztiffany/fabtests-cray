@@ -135,8 +135,10 @@ static int send_msg(int size)
 	
 	ret = fi_send(ep, buf, (size_t) size, fi_mr_desc(mr), remote_fi_addr, 
 			&fi_ctx_send);
-	if (ret)
+	if (ret) {
 		FT_PRINTERR("fi_send", ret);
+		return ret;
+	}
 
 	return wait_for_completion(scq, 1);
 }
@@ -520,17 +522,9 @@ static int init_fabric(void)
 	char *node, *service;
 	int ret;
 
-	if (opts.dst_addr) {
-		ret = ft_getsrcaddr(opts.src_addr, opts.src_port, hints);
-		if (ret)
-			return ret;
-		node = opts.dst_addr;
-		service = opts.dst_port;
-	} else {
-		node = opts.src_addr;
-		service = opts.src_port;
-		flags = FI_SOURCE;
-	}
+	ret = ft_read_addr_opts(&node, &service, hints, &flags, &opts);
+	if (ret)
+		return ret;
 
 	ret = fi_getinfo(FT_FIVERSION, node, service, flags, hints, &fi);
 	if (ret) {
