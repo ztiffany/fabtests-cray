@@ -401,14 +401,10 @@ static int client_connect(void)
 	if (ret != 0)
 		return ret;
 
-	ret = ft_getdestaddr(opts.dst_addr, opts.dst_port, hints);
-	if (ret != 0)
-		goto err1;
-
-	ret = fi_av_insert(av, hints->dest_addr, 1, &remote_fi_addr, 0, NULL);
+	ret = fi_av_insert(av, fi->dest_addr, 1, &remote_fi_addr, 0, NULL);
 	if (ret != 1) {
 		FT_PRINTERR("fi_av_insert", ret);
-		goto err2;
+		goto err;
 	}
 
 	// send initial message to server with our local address
@@ -421,18 +417,16 @@ static int client_connect(void)
 
 	ret = send_xfer(addrlen);
 	if (ret != 0)
-		goto err2;
+		goto err;
 
 	// wait for reply to know server is ready
 	ret = recv_xfer(4);
 	if (ret != 0)
-		goto err2;
+		goto err;
 
 	return 0;
 
-err2:
-	free(hints->dest_addr);
-err1:
+err:
 	free_ep_res();
 	fi_close(&av->fid);
 	fi_close(&dom->fid);
@@ -575,6 +569,8 @@ int main(int argc, char **argv)
 		case '?':
 		case 'h':
 			ft_csusage(argv[0], "Ping pong client and server using UD.");
+			FT_PRINT_OPTS_USAGE("-t <timeout>",
+					"seconds before timeout on receive");
 			return EXIT_FAILURE;
 		}
 	}
