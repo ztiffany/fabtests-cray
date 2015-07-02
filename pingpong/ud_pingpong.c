@@ -443,7 +443,7 @@ static int server_connect(void)
 
 	ret = common_setup();
 	if (ret != 0)
-		goto err;
+		return ret;
 
 	clock_gettime(CLOCK_REALTIME_COARSE, &a);
 	do {
