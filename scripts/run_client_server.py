@@ -45,10 +45,13 @@ import os, select, fcntl, time # for timeout stuff
 from signal import SIGALRM
 
 class fabtest:
-    def __init__(self, _name, _fabric, _timeout, _args=None, _launcher=None, _server_addr=None):
+    def __init__(self, _name, _fabric, _timeout, _args=None, _nnodes='1', _ntasks='-1', _nthreads='-1', _launcher=None, _server_addr=None):
         self.name = _name
         self.fabric = _fabric
         self.args = _args
+        self.nnodes = _nnodes
+        self.ntasks = _ntasks
+        self.nthreads = _nthreads
         self.timeout = _timeout
         self.launcher = _launcher
         self.server_addr = _server_addr
@@ -56,9 +59,21 @@ class fabtest:
     def start(self):
         cmd = list()
         if self.launcher == 'srun':
-            cmd += ['srun', '-N1', '--exclusive', '-t'+self.formattedTimeout()]
+            cmd += ['srun', '-N'+self.nnodes, '--exclusive', '-t'+self.formattedTimeout()]
+            if self.ntasks != '-1':
+                cmd += [ '-n'+self.ntasks ]
+            else:
+                cmd += [ '--ntasks-per-node=1' ]
+            if self.nthreads != '-1':
+                cmd += [ '-c'+self.nthreads ]
         elif self.launcher == 'aprun':
-            cmd += ['aprun', '-n1', '-N1', '-j0', '-t'+str(self.timeout)]
+            cmd += ['aprun', '-n'+self.nnodes, '-t'+str(self.timeout)]
+            if self.ntasks != '-1':
+                cmd += [ '-N'+self.ntasks ]
+            else:
+                cmd += [ '-N1' ]
+            if self.nthreads != '-1':
+                cmd += [ '-d'+self.nthreads ]
         cmd += [self.name, '-f', self.fabric]
         if self.args != None:
             cmd += self.args.split()
@@ -170,13 +185,16 @@ def _main():
     # parser.add_argument('--local-server', dest='local_server', action='store_true', default=True, help='Run the server locally')
     # parser.add_argument('--local-client', dest='local_client', action='store_true', default=True, help='Run the client locally')
     parser.add_argument('--launcher', dest='launcher', default=None, choices=['aprun', 'srun', None], help='Launcher mechnism')
+    parser.add_argument('--nnodes', dest='nnodes', default='1', help='Number of hardware threads per node')
+    parser.add_argument('--ntasks', dest='ntasks', default='-1', help='Number of tasks')
+    parser.add_argument('--nthreads', dest='nthreads', default='-1', help='Number of client nodes')
     # TODO: for ssh version
     # parser.add_argument('-c', '--client-addr', metavar='addr', dest='client_addr', default=None, help='Client address')
     parser.add_argument('--client-args', metavar='args', dest='client_args', action='store', default=None, help='Client args')
     parser.add_argument('-s', '--server-addr', metavar='addr', dest='server_addr', action='store', default=None, help='Server address')
     parser.add_argument('--server-args', metavar='args', dest='server_args', action='store', default=None, help='Server args')
     parser.add_argument('--no-server', dest='run_server', default=True, action='store_false', help='Do not run a server')
-    parser.add_argument('-t', '--timeout', dest='timeout', action='store', type=int, default=600, help='timeout')
+    parser.add_argument('-t', '--timeout', dest='timeout', action='store', type=int, default=60, help='timeout')
 
     args = parser.parse_args()
 
@@ -186,6 +204,9 @@ def _main():
     # local_server = args.local_server
     # local_client = args.local_client
     launcher = args.launcher
+    nnodes = args.nnodes
+    ntasks = args.ntasks
+    nthreads = args.nthreads
     # client_addr = args.client_addr
     client_args = args.client_args
     server_addr = args.server_addr
@@ -204,7 +225,7 @@ def _main():
         if server_addr == None:
             server_addr = socket.gethostbyname(socket.gethostname())
 
-    client = fabtest(testname, fabric, timeout, client_args, launcher, server_addr)
+    client = fabtest(testname, fabric, timeout, client_args, nnodes, ntasks, nthreads, launcher, server_addr)
     if client.start() != 0:
         sys.stdout.write('Client failed to start.\n')
         return -1
