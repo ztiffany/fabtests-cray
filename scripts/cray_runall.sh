@@ -35,7 +35,6 @@
 #
 # globals:
 #   provider to use for client/server "simple" tests
-cs_provider="sockets"
 script_path=$(dirname "$0")
 run_client_server=$script_path/run_client_server.py
 expected_failures=$script_path/cray_runall_expected_failures
@@ -55,10 +54,12 @@ my_exit() {
     # replace control characters with spaces
     expected=${expected//[[:cntrl:]]/ }
     intermittent=${intermittent//[[:cntrl:]]/ }
-    echo "==="
+    fail_unexpected=0
+    echo ""
     echo "Total tests run: "$total_tests
     echo "Tests passed: "$tests_passed
     echo "Tests failed: "$tests_failed
+    echo ""
     if test $tests_failed -ne 0 ; then
 	echo "Failing tests are:"
 	for ftest in ${failed_tests[@]}; do
@@ -77,12 +78,31 @@ my_exit() {
 		junk=$((tests_failed--))
 	    else
 		echo "* $ftest"
+		junk=$((fail_unexpected++))
 	    fi
 	done
     fi
+    echo "Number of unexepected failures: "$fail_unexpected
 
-    unexpected=${expected//[[:blank:]]/}
-    if [[ "$unexpected" != "" ]]; then
+    if test $total_skipped -ne 0 ; then
+	echo ""
+	echo "Skipped tests are:"
+	for stest in ${skipped_tests[@]}; do
+	    expr="$stest[[:blank:]]"
+	    lexpr="$stest$"
+	    echo "* $stest"
+	    if [[ "$expected" =~ $expr ]]; then
+		expected=${expected//$expr/}
+	    elif [[ "$expected" =~ $lexpr ]]; then
+		expected=${expected%%$stest}
+	    fi
+	done
+	echo "Number skipped: "$total_skipped
+    fi
+    
+    fail_expected=${expected//[[:blank:]]/}
+    if [[ "$fail_expected" != "" ]]; then
+	echo ""
 	echo "The following tests were expected to fail, but passed:"
 	for t in $expected; do
 	    echo "* $t"
@@ -93,11 +113,31 @@ my_exit() {
     exit $tests_failed
 }
 
+run_test() {
+    test=$1
+    echo Running $test
+    if [ ! -x $testdir/$test ]; then
+	echo "$test does not exist..  Skipping."
+	junk=$((total_skipped++))
+	skipped_tests=("${skipped_tests[@]}" $test)
+	continue
+    fi
+    junk=$((total_tests++))
+    $run_client_server $testdir/$test -f gni --launcher $launcher $2
+    if [ $? != 0 ] ; then
+	junk=$((tests_failed++))
+	failed_tests=("${failed_tests[@]}" $test)
+    else
+	junk=$((tests_passed++))
+    fi
+    sleep 1
+}
 
 tests_failed=0
 tests_passed=0
 testdir=${PWD}
 declare -a failed_tests=()
+declare -a skipped_tests=()
 
 if [ $# -gt 0 ] ; then
   while getopts "d:h" option; do
@@ -110,12 +150,7 @@ if [ $# -gt 0 ] ; then
   shift $(($OPTIND-1))
 fi
 
-#
-# first run single process tests, fi _info is a special test
-#
-
 nprocs=1
-total_tests=1
 
 #
 # Check for srun or aprun
@@ -133,104 +168,81 @@ else
     fi
 fi
 
-tmp_outfile="test.$$.out"
-echo Running fi_info
-$run_client_server $testdir/fi_info -f gni --launcher $launcher --no-server 2>&1 > $tmp_outfile
-if [ $? != 0 ]; then
-    echo "fi_info failed, aborting..."
-    junk=$((tests_failed++))
-    failed_tests=("${failed_tests[@]}" "fi_info")
-else
-  count=`grep gni $tmp_outfile | wc -l`
-  if [ $count -lt 3 ] ; then
-    echo "GNI doesn't appear in fi_info about, aborting..." 
-    junk=$((tests_failed++))
-    failed_tests=("${failed_tests[@]}" "fi_info")
-  else
-    junk=$((tests_passed++))
-    cat $tmp_outfile
-  fi
-fi
-rm $tmp_outfile
-if test $tests_failed -ne 0 ; then
-    # exit if fi_info fails, since we can't rely on anything else
-    my_exit
-fi
-sleep 1
+total_tests=0
+total_skipped=0
 
-stests=( fi_ep_test \
-         fi_av_test2 \
-         fi_dom_test \
-         fi_multi_dom_test )
-num_stests=${#stests[@]}
+# TODO: Figure out how to run these tests OR how to inject the
+#       launcher script into runfabtests.sh
 
-total_tests=$((total_tests+$num_stests))
+# unit=( \
+#     fi_av_test \
 
-for test in ${stests[@]} ; do
+# simple=( \
+#     fi_cq_data \
+#     fi_dgram \
+#     fi_dgram_waitset \
+#     fi_msg \
+#     fi_msg_epoll \
+#     fi_poll \
+#     fi_rdm \
+#     fi_rdm_rma_simple \
+#     fi_rdm_shared_ctx \
+#     fi_rdm_tagged_peek \
+#     fi_scalable_ep )
 
-  echo Running $test
-  $run_client_server $testdir/$test -f gni --launcher $launcher --no-server
-  if [ $? != 0 ] ; then
-    junk=$((tests_failed++))
-    failed_tests=("${failed_tests[@]}" $test)
-  else
-    junk=$((tests_passed++))
-  fi
-  sleep 1
+# pingpong=( \
+#     fi_msg_pingpong \
+#     fi_rdm_cntr_pingpong \
+#     fi_rdm_inject_pingpong \
+#     fi_rdm_pingpong \
+#     fi_rdm_tagged_pingpong \
+#     fi_ud_pingpong )
+
+# streaming=( \
+#     fi_msg_rma \
+#     fi_rdm_atomic \
+#     fi_rdm_multi_recv \
+#     fi_rdm_rma )
+
+# ported=( \
+#     fi_cmatose \
+#     fi_rc_pingpong )
+
+# complex=( \
+#     fi_ubertest )
+
+# all_tests="${unit[@]} ${simple[@]} ${pingpong[@]} ${streaming[@]} ${ported[@]} ${complex[@]}"
+
+no_server=( \
+    fi_av_test2 \
+    fi_dom_test \
+    fi_ep_test \
+    fi_eq_test \
+    fi_multi_dom_test \
+    fi_size_left_test )
+
+for test in ${no_server[@]}; do
+    run_test "$test" "--no-server"
 done
 
-# Is there a way to have configure get all thes names for us?
-cs_tests=(fi_msg\
-          fi_msg_pingpong \
-          fi_msg_rma \
-          fi_rdm \
-          fi_rdm_rma_simple \
-          fi_dgram \
-          fi_dgram_waitset \
-          fi_rdm_pingpong \
-          fi_rdm_tagged_pingpong \
-          fi_rdm_tagged_search \
-          fi_rdm_cntr_pingpong \
-          fi_rdm_rma \
-          fi_rdm_atomic \
-          fi_ud_pingpong \
-          fi_cq_data \
-          fi_poll \
-          fi_rdm_inject_pingpong \
-          fi_rdm_multi_recv \
-          fi_scalable_ep \
-          fi_rdm_shared_ctx )
+two_nodes=( \
+     rdm_bw \
+     rdm_latency \
+     rdm_mbw_mr )
 
-num_cs_tests=${#cs_tests[@]}
-
-total_tests=$((total_tests+$num_cs_tests))
-
-for test in ${cs_tests[@]} ; do
-
-  echo Running $test using provider $cs_provider
-  $run_client_server $testdir/$test -f $cs_provider --launcher $launcher
-  if [ $? != 0 ] ; then
-    junk=$((tests_failed++))
-    failed_tests=("${failed_tests[@]}" $test)
-  else
-    junk=$((tests_passed++))
-  fi
-  sleep 1
-
+for test in ${two_nodes[@]}; do
+    run_test "$test" "--no-server --nnodes=2"
 done
 
-# handle special case of complex/fabtest
+two_nodes_threaded=( \
+     rdm_bw_threaded \
+     rdm_latency_threaded )
 
-total_tests=$((total_tests+1))
-echo Running test fabtest
-$run_client_server $testdir/fabtest -f $cs_provider --launcher $launcher --server-args="-x" --client-args="-x" -t 120
-if [ $? != 0 ] ; then
-  junk=$((tests_failed++))
-  failed_tests=("${failed_tests[@]}" "fabtest")
-else
-  junk=$((tests_passed++))
-fi
-
+for test in ${two_nodes_threaded[@]} ; do
+    for t in 1 2 4 8 12 16 24; do
+	run_test "$test" "--no-server --nnodes=2 --nthreads=$t --client-args=-t$t"
+    done
+done
 
 
 my_exit

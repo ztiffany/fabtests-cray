@@ -1,4 +1,5 @@
 # intermittent failures, one per line
-fabtest
-fi_msg
-fi_ud_pingpong
+rdm_bw
+rdm_bw_threaded
+rdm_latency
+rdm_latency_threaded
