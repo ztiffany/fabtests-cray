@@ -37,6 +37,16 @@
 
 #include <shared.h>
 
+struct fi_info *fi, *hints;
+struct fid_fabric *fabric;
+struct fid_domain *domain;
+struct fid_pep *pep;
+struct fid_ep *ep;
+struct fid_cq *txcq, *rxcq;
+struct fid_mr *mr;
+struct fid_av *av;
+struct fid_eq *eq;
+
 struct test_size_param test_size[] = {
 	{ 1 <<  1, 1 }, { (1 <<  1) + (1 <<  0), 2},
 	{ 1 <<  2, 2 }, { (1 <<  2) + (1 <<  1), 2},
@@ -127,7 +137,7 @@ int ft_getdestaddr(char *node, char *service, struct fi_info *hints)
 	return getaddr(node, service, hints, 0);
 }
 
-int ft_read_addr_opts(char **node, char **service, struct fi_info *hints, 
+int ft_read_addr_opts(char **node, char **service, struct fi_info *hints,
 		uint64_t *flags, struct cs_opts *opts)
 {
 	int ret;
@@ -258,7 +268,7 @@ int wait_for_completion(struct fid_cq *cq, int num_completions)
 }
 
 void cq_readerr(struct fid_cq *cq, char *cq_str)
-{ 
+{
 	struct fi_cq_err_entry cq_err;
 	const char *err_str;
 	int ret;
@@ -296,8 +306,8 @@ void eq_readerr(struct fid_eq *eq, char *eq_str)
 int ft_finalize(
 	struct fi_info *fi,
 	struct fid_ep *tx_ep,
-	struct fid_cq *scq,
-	struct fid_cq *rcq,
+	struct fid_cq *txcq,
+	struct fid_cq *rxcq,
 	fi_addr_t addr)
 {
 	struct fi_msg msg;
@@ -337,8 +347,8 @@ int ft_finalize(
 		goto err;
 	}
 
-	wait_for_data_completion(scq, 1);
-	wait_for_data_completion(rcq, 1);
+	wait_for_data_completion(txcq, 1);
+	wait_for_data_completion(rxcq, 1);
 
 err:
 	free(buf);
@@ -355,7 +365,7 @@ int64_t get_elapsed(const struct timespec *b, const struct timespec *a,
     return elapsed / p;
 }
 
-void show_perf(char *name, int tsize, int iters, struct timespec *start, 
+void show_perf(char *name, int tsize, int iters, struct timespec *start,
 		struct timespec *end, int xfers_per_iter)
 {
 	static int header = 1;

@@ -56,19 +56,12 @@
 
 int fabtests_debug = 0;
 
-static struct fi_info *fi, *hints;
 static struct fi_eq_attr eq_attr;
-
-static struct fid_fabric *fabric;
-static struct fid_domain *domain;
-static struct fid_eq *eq;
 
 static char err_buf[512];
 
 /* per-test fixture variables */
 static struct fid_cq *wcq = NULL;
-static struct fid_cq *rcq = NULL;
-static struct fid_av *av = NULL;
 
 /* returns 0 on success or a negative value that can be stringified with
  * fi_strerror on error.
@@ -95,10 +88,10 @@ static int teardown_ep_fixture(struct fid_ep *ep)
 			teardown_ret = ret;
 		}
 	}
-	if (rcq != NULL) {
-		ret = fi_close(&rcq->fid);
+	if (rxcq != NULL) {
+		ret = fi_close(&rxcq->fid);
 		if (ret != 0) {
-			printf("fi_close(rcq) %s\n", fi_strerror(-ret));
+			printf("fi_close(rxcq) %s\n", fi_strerror(-ret));
 			teardown_ret = ret;
 		}
 	}
@@ -153,7 +146,7 @@ static int setup_ep_fixture(struct fid_ep **ep_o)
 	cq_attr.wait_obj = FI_WAIT_NONE;
 	cq_attr.size = RX_CQ_DEPTH;
 
-	ret = fi_cq_open(domain, &cq_attr, &rcq, /*context=*/NULL);
+	ret = fi_cq_open(domain, &cq_attr, &rxcq, /*context=*/NULL);
 	if (ret != 0) {
 		printf("fi_cq_open %s\n", fi_strerror(-ret));
 		goto fail;
@@ -177,9 +170,9 @@ static int setup_ep_fixture(struct fid_ep **ep_o)
 		goto fail;
 	}
 
-	ret = fi_ep_bind(*ep_o, &rcq->fid, FI_RECV);
+	ret = fi_ep_bind(*ep_o, &rxcq->fid, FI_RECV);
 	if (ret != 0) {
-		printf("fi_ep_bind(rcq) %s\n", fi_strerror(-ret));
+		printf("fi_ep_bind(rxcq) %s\n", fi_strerror(-ret));
 		goto fail;
 	}
 

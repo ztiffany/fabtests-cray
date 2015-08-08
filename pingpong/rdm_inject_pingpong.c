@@ -50,15 +50,6 @@ static struct timespec start, end;
 static void *send_buf, *recv_buf;
 static size_t buffer_size;
 
-static struct fi_info *fi, *hints;
-
-static struct fid_fabric *fab;
-static struct fid_domain *dom;
-static struct fid_ep *ep;
-static struct fid_cq *rcq;
-static struct fid_cq *scq;
-static struct fid_av *av;
-static struct fid_mr *mr;
 static void *local_addr, *remote_addr;
 static size_t addrlen = 0;
 static fi_addr_t remote_fi_addr;
@@ -83,10 +74,10 @@ static int recv_xfer(int size)
 	int ret;
 
 	do {
-		ret = fi_cq_read(rcq, &comp, 1);
+		ret = fi_cq_read(rxcq, &comp, 1);
 		if (ret < 0 && ret != -FI_EAGAIN) {
 			if (ret == -FI_EAVAIL) {
-				cq_readerr(rcq, "rcq");
+				cq_readerr(rxcq, "rxcq");
 			} else {
 				FT_PRINTERR("fi_cq_read", ret);
 			}
@@ -125,7 +116,7 @@ static int recv_msg(void)
 		return ret;
 	}
 
-	ret = wait_for_completion(rcq, 1);
+	ret = wait_for_completion(rxcq, 1);
 
 	return ret;
 }
@@ -145,7 +136,7 @@ static int run_test(void)
 {
 	int ret, i;
 
-	if (opts.transfer_size > max_inject_size) 
+	if (opts.transfer_size > max_inject_size)
 		return 0;
 
 	ret = sync_test();
@@ -182,8 +173,8 @@ static void free_ep_res(void)
 	fi_close(&ep->fid);
 	fi_close(&av->fid);
 	fi_close(&mr->fid);
-	fi_close(&rcq->fid);
-	fi_close(&scq->fid);
+	fi_close(&rxcq->fid);
+	fi_close(&txcq->fid);
 	free(send_buf);
 	free(recv_buf);
 }
@@ -208,13 +199,13 @@ static int alloc_ep_res(struct fi_info *fi)
 	cq_attr.wait_obj = FI_WAIT_NONE;
 	cq_attr.size = max_credits << 1;
 
-	ret = fi_cq_open(dom, &cq_attr, &rcq, NULL);
+	ret = fi_cq_open(domain, &cq_attr, &rxcq, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_cq_open", ret);
 		goto err1;
 	}
 
-	ret = fi_cq_open(dom, &cq_attr, &scq, NULL);
+	ret = fi_cq_open(domain, &cq_attr, &txcq, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_cq_open", ret);
 		goto err2;
@@ -222,7 +213,7 @@ static int alloc_ep_res(struct fi_info *fi)
 
 	/* Memory registration not required for send_buf since we use fi_inject.
 	 * fi_inject copies the buffer of data that needs to be sent. */
-	ret = fi_mr_reg(dom, recv_buf, buffer_size, 0, 0, 0, 0, &mr, NULL);
+	ret = fi_mr_reg(domain, recv_buf, buffer_size, 0, 0, 0, 0, &mr, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_cq_open", ret);
 		goto err3;
@@ -234,13 +225,13 @@ static int alloc_ep_res(struct fi_info *fi)
 	av_attr.count = 1;
 	av_attr.name = NULL;
 
-	ret = fi_av_open(dom, &av_attr, &av, NULL);
+	ret = fi_av_open(domain, &av_attr, &av, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_av_open", ret);
 		goto err4;
 	}
 
-	ret = fi_endpoint(dom, fi, &ep, NULL);
+	ret = fi_endpoint(domain, fi, &ep, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_endpoint", ret);
 		goto err5;
@@ -253,9 +244,9 @@ err5:
 err4:
 	fi_close(&mr->fid);
 err3:
-	fi_close(&scq->fid);
+	fi_close(&txcq->fid);
 err2:
-	fi_close(&rcq->fid);
+	fi_close(&rxcq->fid);
 err1:
 	free(send_buf);
 	free(recv_buf);
@@ -266,13 +257,13 @@ static int bind_ep_res(void)
 {
 	int ret;
 
-	ret = fi_ep_bind(ep, &rcq->fid, FI_RECV);
+	ret = fi_ep_bind(ep, &rxcq->fid, FI_RECV);
 	if (ret) {
 		FT_PRINTERR("fi_ep_bind", ret);
 		return ret;
 	}
 
-	ret = fi_ep_bind(ep, &scq->fid, FI_SEND);
+	ret = fi_ep_bind(ep, &txcq->fid, FI_SEND);
 	if (ret) {
 		FT_PRINTERR("fi_ep_bind", ret);
 		return ret;
@@ -308,7 +299,7 @@ static int init_fabric(void)
 		FT_PRINTERR("fi_getinfo", ret);
 		return ret;
 	}
-	
+
 	/* check max msg size */
 	max_inject_size = fi->tx_attr->inject_size;
 	if ((opts.user_options & FT_OPT_SIZE) &&
@@ -325,13 +316,13 @@ static int init_fabric(void)
 		memcpy(remote_addr, fi->dest_addr, addrlen);
 	}
 
-	ret = fi_fabric(fi->fabric_attr, &fab, NULL);
+	ret = fi_fabric(fi->fabric_attr, &fabric, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_fabric", ret);
 		goto err0;
 	}
 
-	ret = fi_domain(fab, fi, &dom, NULL);
+	ret = fi_domain(fabric, fi, &domain, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_domain", ret);
 		goto err1;
@@ -350,9 +341,9 @@ static int init_fabric(void)
 err4:
 	free_ep_res();
 err3:
-	fi_close(&dom->fid);
+	fi_close(&domain->fid);
 err1:
-	fi_close(&fab->fid);
+	fi_close(&fabric->fid);
 err0:
 	return ret;
 }
@@ -362,7 +353,7 @@ static int init_av(void)
 	int ret;
 
 	if (opts.dst_addr) {
-		/* Get local address blob. Find the addrlen first. We set addrlen 
+		/* Get local address blob. Find the addrlen first. We set addrlen
 		 * as 0 and fi_getname will return the actual addrlen. */
 		addrlen = 0;
 		ret = fi_getname(&ep->fid, local_addr, &addrlen);
@@ -378,7 +369,7 @@ static int init_av(void)
 			return ret;
 		}
 
-		ret = fi_av_insert(av, remote_addr, 1, &remote_fi_addr, 0, 
+		ret = fi_av_insert(av, remote_addr, 1, &remote_fi_addr, 0,
 				&fi_ctx_av);
 		if (ret != 1) {
 			FT_PRINTERR("fi_av_insert", ret);
@@ -407,7 +398,7 @@ static int init_av(void)
 		remote_addr = malloc(addrlen);
 		memcpy(remote_addr, recv_buf + sizeof(size_t), addrlen);
 
-		ret = fi_av_insert(av, remote_addr, 1, &remote_fi_addr, 0, 
+		ret = fi_av_insert(av, remote_addr, 1, &remote_fi_addr, 0,
 				&fi_ctx_av);
 		if (ret != 1) {
 			FT_PRINTERR("fi_av_insert", ret);
@@ -459,11 +450,11 @@ static int run(void)
 	}
 
 	/* Finalize before closing ep */
-	ft_finalize(fi, ep, scq, rcq, remote_fi_addr);
+	ft_finalize(fi, ep, txcq, rxcq, remote_fi_addr);
 out:
 	free_ep_res();
-	fi_close(&dom->fid);
-	fi_close(&fab->fid);
+	fi_close(&domain->fid);
+	fi_close(&fabric->fid);
 	return ret;
 }
 

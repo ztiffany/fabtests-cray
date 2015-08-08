@@ -54,14 +54,6 @@ static size_t buffer_size = 1024;
 static int transfer_size = 1000;
 static int rx_depth = 512;
 
-static struct fi_info *fi, *hints;
-
-static struct fid_fabric *fab;
-static struct fid_domain *dom;
-static struct fid_ep *ep;
-static struct fid_cq *rcq, *scq;
-static struct fid_av *av;
-static struct fid_mr *mr;
 static struct fid_poll *pollset;
 static void *local_addr, *remote_addr;
 static size_t addrlen = 0;
@@ -75,8 +67,8 @@ static void free_ep_res(void)
 	fi_close(&av->fid);
 	fi_close(&mr->fid);
 	fi_close(&pollset->fid);
-	fi_close(&rcq->fid);
-	fi_close(&scq->fid);
+	fi_close(&rxcq->fid);
+	fi_close(&txcq->fid);
 	free(buf);
 	fi_close(&ep->fid);
 }
@@ -100,14 +92,14 @@ static int alloc_ep_res(struct fi_info *fi)
 	cq_attr.size = rx_depth;
 
 	/* Open completion queue for send completions */
-	ret = fi_cq_open(dom, &cq_attr, &scq, (void *)CQ_SEND);
+	ret = fi_cq_open(domain, &cq_attr, &txcq, (void *)CQ_SEND);
 	if (ret) {
 		FT_PRINTERR("fi_cq_open", ret);
 		goto err1;
 	}
 
 	/* Open completion queue for recv completions */
-	ret = fi_cq_open(dom, &cq_attr, &rcq, (void *)CQ_RECV);
+	ret = fi_cq_open(domain, &cq_attr, &rxcq, (void *)CQ_RECV);
 	if (ret) {
 		FT_PRINTERR("fi_cq_open", ret);
 		goto err2;
@@ -115,28 +107,28 @@ static int alloc_ep_res(struct fi_info *fi)
 
 	/* Open a polling set */
 	memset(&poll_attr, 0, sizeof poll_attr);
-	ret = fi_poll_open(dom, &poll_attr, &pollset);
+	ret = fi_poll_open(domain, &poll_attr, &pollset);
 	if (ret) {
 		FT_PRINTERR("fi_poll_open", ret);
 		goto err2;
 	}
-	
+
 	/* Add send CQ to the polling set */
-	ret = fi_poll_add(pollset, &scq->fid, 0);
+	ret = fi_poll_add(pollset, &txcq->fid, 0);
 	if (ret) {
 		FT_PRINTERR("fi_poll_add", ret);
 		goto err3;
 	}
 
 	/* Add recv CQ to the polling set */
-	ret = fi_poll_add(pollset, &rcq->fid, 0);
+	ret = fi_poll_add(pollset, &rxcq->fid, 0);
 	if (ret) {
 		FT_PRINTERR("fi_poll_add", ret);
 		goto err3;
 	}
 
 	/* Register memory */
-	ret = fi_mr_reg(dom, buf, buffer_size, 0, 0, 0, 0, &mr, NULL);
+	ret = fi_mr_reg(domain, buf, buffer_size, 0, 0, 0, 0, &mr, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_mr_reg", ret);
 		goto err4;
@@ -149,13 +141,13 @@ static int alloc_ep_res(struct fi_info *fi)
 	av_attr.name = NULL;
 
 	/* Open Address Vector */
-	ret = fi_av_open(dom, &av_attr, &av, NULL);
+	ret = fi_av_open(domain, &av_attr, &av, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_av_open", ret);
 		goto err5;
 	}
 
-	ret = fi_endpoint(dom, fi, &ep, NULL);
+	ret = fi_endpoint(domain, fi, &ep, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_endpoint", ret);
 		goto err6;
@@ -168,11 +160,11 @@ err6:
 err5:
 	fi_close(&mr->fid);
 err4:
-	fi_close(&rcq->fid);
+	fi_close(&rxcq->fid);
 err3:
 	fi_close(&pollset->fid);
 err2:
-	fi_close(&scq->fid);
+	fi_close(&txcq->fid);
 err1:
 	free(buf);
 	return ret;
@@ -183,13 +175,13 @@ static int bind_ep_res(void)
 	int ret;
 
 	/* Bind AV and CQs with endpoint */
-	ret = fi_ep_bind(ep, &scq->fid, FI_SEND);
+	ret = fi_ep_bind(ep, &txcq->fid, FI_SEND);
 	if (ret) {
 		FT_PRINTERR("fi_ep_bind", ret);
 		return ret;
 	}
 
-	ret = fi_ep_bind(ep, &rcq->fid, FI_RECV);
+	ret = fi_ep_bind(ep, &rxcq->fid, FI_RECV);
 	if (ret) {
 		FT_PRINTERR("fi_ep_bind", ret);
 		return ret;
@@ -221,7 +213,7 @@ static int send_msg(int size)
 		return ret;
 	}
 
-	ret = wait_for_completion(scq, 1);
+	ret = wait_for_completion(txcq, 1);
 
 	return ret;
 }
@@ -236,7 +228,7 @@ static int recv_msg(void)
 		return ret;
 	}
 
-	ret = wait_for_completion(rcq, 1);
+	ret = wait_for_completion(rxcq, 1);
 
 	return ret;
 }
@@ -263,14 +255,14 @@ static int init_fabric(void)
 		remote_addr = malloc(addrlen);
 		memcpy(remote_addr, fi->dest_addr, addrlen);
 	}
-	
-	ret = fi_fabric(fi->fabric_attr, &fab, NULL);
+
+	ret = fi_fabric(fi->fabric_attr, &fabric, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_fabric", ret);
 		goto err0;
 	}
 
-	ret = fi_domain(fab, fi, &dom, NULL);
+	ret = fi_domain(fabric, fi, &domain, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_domain", ret);
 		goto err1;
@@ -289,9 +281,9 @@ static int init_fabric(void)
 err4:
 	free_ep_res();
 err3:
-	fi_close(&dom->fid);
+	fi_close(&domain->fid);
 err1:
-	fi_close(&fab->fid);
+	fi_close(&fabric->fid);
 err0:
 	fi_freeinfo(fi);
 
@@ -303,7 +295,7 @@ static int init_av(void)
 	int ret;
 
 	if (opts.dst_addr) {
-		/* Get local address blob. Find the addrlen first. We set addrlen 
+		/* Get local address blob. Find the addrlen first. We set addrlen
 		 * as 0 and fi_getname will return the actual addrlen. */
 		addrlen = 0;
 		ret = fi_getname(&ep->fid, local_addr, &addrlen);
@@ -319,7 +311,7 @@ static int init_av(void)
 			return ret;
 		}
 
-		ret = fi_av_insert(av, remote_addr, 1, &remote_fi_addr, 0, 
+		ret = fi_av_insert(av, remote_addr, 1, &remote_fi_addr, 0,
 				&fi_ctx_av);
 		if (ret != 1) {
 			FT_PRINTERR("fi_av_insert", ret);
@@ -348,7 +340,7 @@ static int init_av(void)
 		remote_addr = malloc(addrlen);
 		memcpy(remote_addr, buf + sizeof(size_t), addrlen);
 
-		ret = fi_av_insert(av, remote_addr, 1, &remote_fi_addr, 0, 
+		ret = fi_av_insert(av, remote_addr, 1, &remote_fi_addr, 0,
 				&fi_ctx_av);
 		if (ret != 1) {
 			FT_PRINTERR("fi_av_insert", ret);
@@ -407,12 +399,12 @@ static int send_recv()
 			switch((enum comp_type)context[i]) {
 			case CQ_SEND:
 				printf("Send completion received\n");
-				cq = scq;
+				cq = txcq;
 				send_pending--;
 				break;
 			case CQ_RECV:
 				printf("Recv completion received\n");
-				cq = rcq;
+				cq = rxcq;
 				recv_pending--;
 				break;
 			default:
@@ -440,7 +432,7 @@ int main(int argc, char **argv)
 {
 	int op, ret = 0;
 	opts = INIT_OPTS;
-	
+
 	hints = fi_allocinfo();
 	if (!hints)
 		return EXIT_FAILURE;
@@ -460,7 +452,7 @@ int main(int argc, char **argv)
 
 	if (optind < argc)
 		opts.dst_addr = argv[optind];
-	
+
 	hints->ep_attr->type = FI_EP_RDM;
 	hints->caps = FI_MSG;
 	hints->mode = FI_CONTEXT | FI_LOCAL_MR;
@@ -477,8 +469,8 @@ int main(int argc, char **argv)
 	ret = send_recv();
 
 	free_ep_res();
-	fi_close(&dom->fid);
-	fi_close(&fab->fid);
+	fi_close(&domain->fid);
+	fi_close(&fabric->fid);
 	fi_freeinfo(hints);
 	fi_freeinfo(fi);
 

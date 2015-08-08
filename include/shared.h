@@ -86,6 +86,18 @@ enum {
 	FT_OPT_SIZE = 1 << 1
 };
 
+
+extern struct fi_info *fi, *hints;
+extern struct fid_fabric *fabric;
+extern struct fid_domain *domain;
+extern struct fid_pep *pep;
+extern struct fid_ep *ep;
+extern struct fid_cq *txcq, *rxcq;
+extern struct fid_mr *mr;
+extern struct fid_av *av;
+extern struct fid_eq *eq;
+
+
 void ft_parseinfo(int op, char *optarg, struct fi_info *hints);
 void ft_parse_addr_opts(int op, char *optarg, struct cs_opts *opts);
 void ft_parsecsopts(int op, char *optarg, struct cs_opts *opts);
@@ -111,15 +123,15 @@ const unsigned int test_cnt;
 
 int ft_getsrcaddr(char *node, char *service, struct fi_info *hints);
 int ft_getdestaddr(char *node, char *service, struct fi_info *hints);
-int ft_read_addr_opts(char **node, char **service, struct fi_info *hints, 
+int ft_read_addr_opts(char **node, char **service, struct fi_info *hints,
 		uint64_t *flags, struct cs_opts *opts);
 char *size_str(char str[FT_STR_LEN], long long size);
 char *cnt_str(char str[FT_STR_LEN], long long cnt);
 int size_to_count(int size);
 
 void init_test(struct cs_opts *opts, char *test_name, size_t test_name_len);
-int ft_finalize(struct fi_info *fi, struct fid_ep *tx_ep, struct fid_cq *scq,
-		struct fid_cq *rcq, fi_addr_t addr);
+int ft_finalize(struct fi_info *fi, struct fid_ep *tx_ep, struct fid_cq *txcq,
+		struct fid_cq *rxcq, fi_addr_t addr);
 
 
 int wait_for_data_completion(struct fid_cq *cq, int num_completions);
@@ -127,11 +139,11 @@ int wait_for_completion(struct fid_cq *cq, int num_completions);
 void cq_readerr(struct fid_cq *cq, char *cq_str);
 void eq_readerr(struct fid_eq *eq, char *eq_str);
 
-int64_t get_elapsed(const struct timespec *b, const struct timespec *a, 
+int64_t get_elapsed(const struct timespec *b, const struct timespec *a,
 		enum precision p);
-void show_perf(char *name, int tsize, int iters, struct timespec *start, 
+void show_perf(char *name, int tsize, int iters, struct timespec *start,
 		struct timespec *end, int xfers_per_iter);
-void show_perf_mr(int tsize, int iters, struct timespec *start, 
+void show_perf_mr(int tsize, int iters, struct timespec *start,
 		struct timespec *end, int xfers_per_iter, int argc, char *argv[]);
 
 #define FT_PRINTERR(call, retv) \
