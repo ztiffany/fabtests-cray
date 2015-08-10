@@ -57,12 +57,6 @@
 
 #define MAX_ADDR 256
 
-static struct fi_info *hints;
-static struct fi_info *fi;
-static struct fid_fabric *fabric;
-static struct fid_domain *domain;
-static struct fid_ep *ep;
-
 /*
  * Tests:
  * - test open and close of an endpoint
