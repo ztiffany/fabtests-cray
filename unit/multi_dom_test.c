@@ -58,9 +58,6 @@
 
 #define MAX_ADDR 256
 
-static struct fi_info *hints;
-static struct fi_info *fi;
-static struct fid_fabric *fabric;
 static struct fid_domain **domains;
 static struct fid_ep **eps;
 

@@ -168,7 +168,7 @@ unit_fi_av_test_LDADD = libfabtests.la
 unit_fi_av_test2_SOURCES = \
 	unit/av_test2.c \
 	unit/common.c
-unit_fi_size_left_test_LDADD = libfabtests.la
+unit_fi_av_test2_LDADD = libfabtests.la
 
 unit_fi_dom_test_SOURCES = \
 	unit/dom_test.c \
@@ -178,14 +178,17 @@ unit_fi_dom_test_LDADD = libfabtests.la
 unit_fi_ep_test_SOURCES = \
 	unit/ep_test.c \
 	unit/common.c
+unit_fi_ep_test_LDADD = libfabtests.la
 
 unit_fi_multi_dom_test_SOURCES = \
 	unit/multi_dom_test.c \
 	unit/common.c
+unit_fi_multi_dom_test_LDADD = libfabtests.la
 
 unit_fi_size_left_test_SOURCES = \
 	unit/size_left_test.c \
 	unit/common.c
+unit_fi_size_left_test_LDADD = libfabtests.la
 
 ported_libibverbs_fi_rc_pingpong_SOURCES = \
 	ported/libibverbs/rc_pingpong.c
