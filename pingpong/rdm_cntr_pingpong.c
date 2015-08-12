@@ -48,8 +48,6 @@ static int send_count = 0;
 static int recv_outs = 0;	/* Outstanding recvs */
 static char test_name[10] = "custom";
 static struct timespec start, end;
-static void *buf;
-static size_t buffer_size;
 
 static void *local_addr, *remote_addr;
 static size_t addrlen = 0;
@@ -204,16 +202,6 @@ out:
 	return ret;
 }
 
-static void free_ep_res(void)
-{
-	fi_close(&ep->fid);
-	fi_close(&av->fid);
-	fi_close(&mr->fid);
-	fi_close(&rxcntr->fid);
-	fi_close(&txcntr->fid);
-	free(buf);
-}
-
 static int alloc_ep_res(struct fi_info *fi)
 {
 	struct fi_cntr_attr cntr_attr;
@@ -234,19 +222,19 @@ static int alloc_ep_res(struct fi_info *fi)
 	ret = fi_cntr_open(domain, &cntr_attr, &txcntr, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_cntr_open", ret);
-		goto err1;
+		return ret;
 	}
 
 	ret = fi_cntr_open(domain, &cntr_attr, &rxcntr, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_cntr_open", ret);
-		goto err2;
+		return ret;
 	}
 
 	ret = fi_mr_reg(domain, buf, buffer_size, 0, 0, 0, 0, &mr, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_mr_reg", ret);
-		goto err3;
+		return ret;
 	}
 
 	memset(&av_attr, 0, sizeof av_attr);
@@ -258,28 +246,16 @@ static int alloc_ep_res(struct fi_info *fi)
 	ret = fi_av_open(domain, &av_attr, &av, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_av_open", ret);
-		goto err4;
+		return ret;
 	}
 
 	ret = fi_endpoint(domain, fi, &ep, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_endpoint", ret);
-		goto err5;
+		return ret;
 	}
 
 	return 0;
-
-err5:
-	fi_close(&av->fid);
-err4:
-	fi_close(&mr->fid);
-err3:
-	fi_close(&rxcntr->fid);
-err2:
-	fi_close(&txcntr->fid);
-err1:
-	free(buf);
-	return ret;
 }
 
 static int bind_ep_res(void)
@@ -339,33 +315,24 @@ static int init_fabric(void)
 	ret = fi_fabric(fi->fabric_attr, &fabric, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_fabric", ret);
-		goto err0;
+		return ret;
 	}
 
 	ret = fi_domain(fabric, fi, &domain, NULL);
 	if (ret) {
 		FT_PRINTERR("fi_domain", ret);
-		goto err1;
+		return ret;
 	}
 
 	ret = alloc_ep_res(fi);
 	if (ret)
-		goto err3;
+		return ret;
 
 	ret = bind_ep_res();
 	if (ret)
-		goto err4;
+		return ret;
 
 	return 0;
-
-err4:
-	free_ep_res();
-err3:
-	fi_close(&domain->fid);
-err1:
-	fi_close(&fabric->fid);
-err0:
-	return ret;
 }
 
 static int init_av(void)
@@ -473,9 +440,6 @@ static int run(void)
 	get_send_completions();
 	/* TODO: need support for finalize operation to sync test */
 out:
-	free_ep_res();
-	fi_close(&domain->fid);
-	fi_close(&fabric->fid);
 	return ret;
 }
 
@@ -510,7 +474,6 @@ int main(int argc, char **argv)
 
 	ret = run();
 
-	fi_freeinfo(hints);
-	fi_freeinfo(fi);
+	ft_free_res();
 	return -ret;
 }
