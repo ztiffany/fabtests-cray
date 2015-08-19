@@ -57,7 +57,6 @@
 #define MAX_ADDR 256
 
 static struct fi_fabric_attr fabric_hints;
-static struct fi_eq_attr eq_attr;
 
 int async_avail = 1;  /* be optimistic */
 int test_map_type = 0;
