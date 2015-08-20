@@ -59,7 +59,7 @@ class fabtest:
     def start(self):
         cmd = list()
         if self.launcher == 'srun':
-            cmd += ['srun', '-N'+self.nnodes, '--exclusive', '-t'+self.formattedTimeout()]
+            cmd += ['srun', '-N'+self.nnodes, '--exclusive', '--cpu_bind=none', '-t'+self.formattedTimeout()]
             if self.ntasks != '-1':
                 cmd += [ '-n'+self.ntasks ]
             else:
