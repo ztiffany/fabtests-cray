@@ -205,7 +205,7 @@ static int run_test()
 			return ret;
 		}
 
-		wait_for_completion(txcq, 1);
+		wait_for_data_completion(txcq, 1);
 		fprintf(stdout, "Done\n");
 	} else {
 		fprintf(stdout, "Waiting for immediate data from client\n");
@@ -250,7 +250,7 @@ static int run(void)
 		return ret;
 	}
 
-	run_test();
+	ret = run_test();
 
 	fi_shutdown(ep, 0);
 	return ret;
