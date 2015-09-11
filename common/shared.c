@@ -565,6 +565,7 @@ int ft_finalize(
 	size_t buf_size;
 	size_t prefix_size = 0;
 	char *buf;
+	void *desc = NULL;
 	int ret;
 
 	if (fi && fi->ep_attr)
@@ -580,10 +581,13 @@ int ft_finalize(
 
 	sprintf(buf + prefix_size, "%s", message);
 
+	if (mr)
+		desc = fi_mr_desc(mr);
+
 	iov.iov_base = buf;
 	iov.iov_len = buf_size;
 	msg.msg_iov = &iov;
-	msg.desc = NULL;
+	msg.desc = &desc;
 	msg.iov_count = 1;
 	msg.addr = addr;
 	msg.context = &tx_ctx;
