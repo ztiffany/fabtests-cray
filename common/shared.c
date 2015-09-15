@@ -176,6 +176,12 @@ int ft_open_fabric_res(void)
 		return ret;
 	}
 
+	ret = fi_domain(fabric, fi, &domain, NULL);
+	if (ret) {
+		FT_PRINTERR("fi_domain", ret);
+		return ret;
+	}
+
 	return 0;
 }
 
@@ -260,9 +266,17 @@ int ft_start_server(void)
 		return ret;
 	}
 
-	ret = ft_open_fabric_res();
-	if (ret)
+	ret = fi_fabric(fi->fabric_attr, &fabric, NULL);
+	if (ret) {
+		FT_PRINTERR("fi_fabric", ret);
 		return ret;
+	}
+
+	ret = fi_eq_open(fabric, &eq_attr, &eq, NULL);
+	if (ret) {
+		FT_PRINTERR("fi_eq_open", ret);
+		return ret;
+	}
 
 	ret = fi_passive_ep(fabric, fi, &pep, NULL);
 	if (ret) {
