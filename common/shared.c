@@ -362,9 +362,12 @@ int ft_init_av(void)
 
 	if (opts.dst_addr) {
 		ret = fi_av_insert(av, fi->dest_addr, 1, &remote_fi_addr, 0, NULL);
-		if (ret != 1) {
+		if (ret < 0) {
 			FT_PRINTERR("fi_av_insert", ret);
 			return ret;
+		} else if (ret != 1) {
+			FT_ERR("fi_av_insert: number of inserted address = %d\n", ret);
+			return -1;
 		}
 
 		addrlen = FT_MAX_CTRL_MSG;
@@ -392,9 +395,12 @@ int ft_init_av(void)
 
 		ret = fi_av_insert(av, (char *) rx_buf + ft_rx_prefix_size(),
 				   1, &remote_fi_addr, 0, NULL);
-		if (ret != 1) {
+		if (ret < 0) {
 			FT_PRINTERR("fi_av_insert", ret);
 			return ret;
+		} else if (ret != 1) {
+			FT_ERR("fi_av_insert: number of inserted address = %d\n", ret);
+			return -1;
 		}
 
 		ret = fi_send(ep, tx_buf, ft_tx_prefix_size() + 1,
@@ -856,7 +862,6 @@ void ft_csusage(char *name, char *desc)
 	FT_PRINT_OPTS_USAGE("-I <number>", "number of iterations");
 	FT_PRINT_OPTS_USAGE("-S <size>", "specific transfer size or 'all'");
 	FT_PRINT_OPTS_USAGE("-m", "machine readable output");
-	FT_PRINT_OPTS_USAGE("-v", "display versions and exit");
 	FT_PRINT_OPTS_USAGE("-h", "display this help output");
 
 	return;
