@@ -37,6 +37,7 @@
 #   provider to use for client/server "simple" tests
 script_path=$(dirname "$0")
 run_client_server=$script_path/run_client_server.py
+run_local_cs=$script_path/run_local_cs.sh
 expected_failures=$script_path/cray_runall_expected_failures
 intermittent_failures=$script_path/cray_runall_intermittent_failures
 
@@ -133,6 +134,27 @@ run_test() {
     sleep 1
 }
 
+run_local_cs_test() {
+    test=$1
+    args="$2"
+    echo Running $test
+    if [ ! -x $testdir/$test ]; then
+	echo "$test does not exist..  Skipping."
+	junk=$((total_skipped++))
+	skipped_tests=("${skipped_tests[@]}" $test)
+	continue
+    fi
+    junk=$((total_tests++))
+    $cs_launch_cmd $run_local_cs $test "$args"
+    if [ $? != 0 ] ; then
+	junk=$((tests_failed++))
+	failed_tests=("${failed_tests[@]}" $test)
+    else
+	junk=$((tests_passed++))
+    fi
+    sleep 1
+}
+
 tests_failed=0
 tests_passed=0
 testdir=${PWD}
@@ -158,10 +180,12 @@ nprocs=1
 srun=`command -v srun`
 if [ $? == 0 ]; then
     launcher="srun"
+    cs_launch_cmd="srun -n1 --exclusive"
 else
     aprun=`command -v aprun`
     if [ $? == 0 ]; then
         launcher="aprun"
+        cs_launch_cmd="aprun -n1"
     else
         echo "Cannot find a supported job launcher (srun, aprun).  Please load the appropriate module"
         exit -1
@@ -189,14 +213,6 @@ total_skipped=0
 #     fi_rdm_shared_ctx \
 #     fi_rdm_tagged_peek \
 #     fi_scalable_ep )
-
-# pingpong=( \
-#     fi_msg_pingpong \
-#     fi_rdm_cntr_pingpong \
-#     fi_rdm_inject_pingpong \
-#     fi_rdm_pingpong \
-#     fi_rdm_tagged_pingpong \
-#     fi_ud_pingpong )
 
 # streaming=( \
 #     fi_msg_rma \
@@ -244,5 +260,20 @@ for test in ${two_nodes_threaded[@]} ; do
     done
 done
 
+pingpong=( \
+     fi_msg_pingpong \
+     fi_rdm_cntr_pingpong \
+     fi_rdm_inject_pingpong \
+     fi_rdm_pingpong \
+     fi_rdm_tagged_pingpong \
+     fi_ud_pingpong )
+
+# -I: iterations
+PINGPONG_ARGS="-I 100"
+PROV=gni
+
+for test in ${pingpong[@]}; do
+    run_local_cs_test $test "-f $PROV $PINGPONG_ARGS"
+done
 
 my_exit
