@@ -48,6 +48,7 @@ dist_noinst_SCRIPTS = \
 
 dist_bin_SCRIPTS += \
 	scripts/cray_runall.sh \
+	scripts/run_local_cs.sh \
 	scripts/run_client_server.py \
 	scripts/cray_runall_expected_failures \
 	scripts/cray_runall_intermittent_failures
